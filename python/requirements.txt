@@ -1,0 +1,5 @@
+# PyTorch (torch + torchaudio) se instala antes y por separado para elegir
+# CPU o CUDA. Ver README.md.
+demucs==4.0.1
+soundfile>=0.12
+numpy
