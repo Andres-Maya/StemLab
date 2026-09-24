@@ -1,0 +1,15 @@
+# Compilación
+out/
+build/
+.vs/
+CMakeUserPresets.json
+*.user
+
+# Python
+python/.venv/
+__pycache__/
+*.pyc
+
+# Sistema
+.DS_Store
+Thumbs.db
