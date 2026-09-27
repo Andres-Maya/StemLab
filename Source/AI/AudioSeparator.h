@@ -51,6 +51,7 @@ public:
     {
         juce::String id;
         juce::String description;
+        juce::StringArray stems;    // pistas que genera, en orden ("vocals", "drums"...)
     };
 
     virtual ~AudioSeparator() = default;
@@ -60,6 +61,9 @@ public:
     virtual std::vector<ModelInfo> getAvailableModels() const = 0;
     virtual juce::String getCurrentModel() const = 0;
     virtual void setCurrentModel (const juce::String& modelId) = 0;
+
+    /** Pistas que generará el modelo actual (para mostrarlas antes de que existan). */
+    juce::StringArray getExpectedStems() const;
 
     /** Bloqueante. Se ejecuta en un hilo de trabajo, nunca en el de mensajes
         ni en el de audio. */
