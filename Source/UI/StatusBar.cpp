@@ -22,6 +22,9 @@ StatusBar::StatusBar (AIProcessManager& aiManager, ProjectManager& projectManage
     cancelButton.onClick = [this] { if (onCancel != nullptr) onCancel(); };
     addChildComponent (cancelButton);
 
+    showSeparationButton.onClick = [this] { if (onShowSeparation != nullptr) onShowSeparation(); };
+    addChildComponent (showSeparationButton);
+
     setMessage ("Listo.");
     startTimerHz (10);
 }
@@ -39,8 +42,12 @@ void StatusBar::timerCallback()
 
     if (aiBusy)
     {
-        messageLabel.setText (ai.getStatus(), juce::dontSendNotification);
-        progressValue = ai.getProgress();
+        // El progreso de la IA se ve en su propia ventana (animación); aquí,
+        // solo el texto con el porcentaje.
+        const auto aiProgress = ai.getProgress();
+        messageLabel.setText (ai.getStatus() + (aiProgress >= 0.0 ? "  ·  "_u8 + juce::String (juce::roundToInt (aiProgress * 100.0)) + " %"
+                                                                  : juce::String()),
+                              juce::dontSendNotification);
     }
     else if (loading)
     {
@@ -57,12 +64,13 @@ void StatusBar::timerCallback()
                                                 : project.getDirectory().getFullPathName(),
                           juce::dontSendNotification);
 
-    const auto showProgress = aiBusy || loading;
+    const auto showProgress = loading && ! aiBusy;
 
     if (progressBar.isVisible() != showProgress || cancelButton.isVisible() != aiBusy)
     {
         progressBar.setVisible (showProgress);
         cancelButton.setVisible (aiBusy);
+        showSeparationButton.setVisible (aiBusy);
         resized();
     }
 }
@@ -81,6 +89,12 @@ void StatusBar::resized()
     if (cancelButton.isVisible())
     {
         cancelButton.setBounds (bounds.removeFromRight (90));
+        bounds.removeFromRight (8);
+    }
+
+    if (showSeparationButton.isVisible())
+    {
+        showSeparationButton.setBounds (bounds.removeFromRight (110));
         bounds.removeFromRight (8);
     }
 

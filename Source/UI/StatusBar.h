@@ -9,7 +9,9 @@
 
 namespace stemlab
 {
-/** Barra inferior: mensajes, progreso de la IA / carga de audio y cancelar. */
+/** Barra inferior: mensajes, progreso de la carga de audio y, durante la
+    separación por IA, su estado con el porcentaje, "Ver progreso" (abre la
+    ventana de la separación) y "Cancelar". */
 class StatusBar final : public juce::Component,
                         private juce::Timer
 {
@@ -19,6 +21,7 @@ public:
     void setMessage (const juce::String& message);
 
     std::function<void()> onCancel;
+    std::function<void()> onShowSeparation;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -35,6 +38,7 @@ private:
     double progressValue = 0.0;
     juce::ProgressBar progressBar { progressValue };
     juce::TextButton cancelButton { "Cancelar" };
+    juce::TextButton showSeparationButton { "Ver progreso" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StatusBar)
 };
