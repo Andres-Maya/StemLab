@@ -101,6 +101,9 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
 
     setWantsKeyboardFocus (true);
     setSize (1280, 820);
+
+    // Revisa una vez por segundo si hay cambios sin guardar (asterisco en el título).
+    startTimer (1000);
 }
 
 MainComponent::~MainComponent()
@@ -284,7 +287,7 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case saveProjectId:         saveProject(); break;
         case saveProjectAsId:       saveProjectAs(); break;
         case importAudioId:         importAudio(); break;
-        case quitId:                juce::JUCEApplication::getInstance()->systemRequestedQuit(); break;
+        case quitId:                requestQuit(); break;
         case deleteTrackId:         deleteSelectedTrack(); break;
         case showFolderId:          showProjectFolder(); break;
         case playPauseId:           togglePlayPause(); break;
@@ -335,7 +338,7 @@ void MainComponent::filesDropped (const juce::StringArray& files, int, int)
         if (file.getFileName() == "project.json")
         {
             if (ensureIdle ("abrir un proyecto"))
-                confirmDiscard ([this, file] { projects.openProject (file, resultHandler ("Proyecto abierto.")); });
+                askToSaveChanges ([this, file] { projects.openProject (file, resultHandler ("Proyecto abierto.")); });
 
             return;
         }
@@ -357,7 +360,7 @@ void MainComponent::newProject()
     if (! ensureIdle ("crear un proyecto"))
         return;
 
-    confirmDiscard ([this]
+    askToSaveChanges ([this]
     {
         projects.newProject();
         statusBar.setMessage ("Proyecto nuevo.");
@@ -369,7 +372,7 @@ void MainComponent::openProject()
     if (! ensureIdle ("abrir un proyecto"))
         return;
 
-    confirmDiscard ([this]
+    askToSaveChanges ([this]
     {
         const auto folder = defaultProjectsFolder();
         fileChooser = std::make_unique<juce::FileChooser> ("Abrir proyecto (project.json)",
@@ -401,7 +404,7 @@ void MainComponent::saveProject()
     reportResult (projects.save(), "Proyecto guardado.");
 }
 
-void MainComponent::saveProjectAs()
+void MainComponent::saveProjectAs (std::function<void()> onSaved)
 {
     // Guardar como copia la carpeta de la sesión: no puede coincidir con una
     // separación o una carga que están escribiendo o leyendo en ella.
@@ -418,14 +421,24 @@ void MainComponent::saveProjectAs()
                                                        folder.getChildFile (suggestedName), juce::String());
 
     fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& chooser)
+                              [this, onSaved = std::move (onSaved)] (const juce::FileChooser& chooser)
     {
         const auto target = chooser.getResult();
 
         if (target == juce::File())
             return;
 
-        reportResult (projects.saveAs (target), "Proyecto guardado en " + target.getFullPathName());
+        const auto result = projects.saveAs (target);
+        reportResult (result, "Proyecto guardado en " + target.getFullPathName());
+
+        // Se aplaza: la acción puede abrir otro FileChooser, y este no se puede
+        // destruir mientras se ejecuta su propio callback.
+        if (result.wasOk() && onSaved != nullptr)
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this), onSaved]
+            {
+                if (safe != nullptr)
+                    onSaved();
+            });
     });
 }
 
@@ -870,25 +883,78 @@ bool MainComponent::ensureIdle (const juce::String& action)
     return true;
 }
 
-void MainComponent::confirmDiscard (std::function<void()> action)
+void MainComponent::askToSaveChanges (std::function<void()> continueAction)
 {
-    if (engine.getMixer().getTracks().empty() || ! projects.getProject().isTemporary())
+    if (! projects.hasUnsavedChanges())
     {
-        action();
+        continueAction();
         return;
     }
 
-    // Sesión sin guardar con pistas: pedir confirmación antes de descartarla.
-    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "StemLab",
-                                        "La sesión actual no está guardada y se descartará.\n¿Continuar?"_u8,
-                                        "Continuar", "Cancelar", this,
-                                        juce::ModalCallbackFunction::create (
-                                            [safe = juce::Component::SafePointer<MainComponent> (this),
-                                             action = std::move (action)] (int buttonIndex)
-                                        {
-                                            if (buttonIndex != 0 && safe != nullptr)
-                                                action();
-                                        }));
+    // Evita abrir el diálogo dos veces (p. ej. pulsar la X repetidamente).
+    if (unsavedChangesDialogOpen)
+        return;
+
+    unsavedChangesDialogOpen = true;
+
+    const auto message = "El proyecto \""_u8 + projects.getProject().getName() + "\" tiene cambios sin guardar.\n\n"
+                       + "¿Quieres guardarlos antes de continuar?"_u8;
+
+    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Cambios sin guardar", message,
+                                           "Guardar", "No guardar", "Cancelar", this,
+                                           juce::ModalCallbackFunction::create (
+                                               [safe = juce::Component::SafePointer<MainComponent> (this),
+                                                continueAction = std::move (continueAction)] (int result)
+                                           {
+                                               if (safe == nullptr)
+                                                   return;
+
+                                               safe->unsavedChangesDialogOpen = false;
+
+                                               if (result == 1)            // Guardar
+                                                   safe->saveThen (continueAction);
+                                               else if (result == 2)       // No guardar
+                                                   continueAction();
+                                               // 0: Cancelar (o Esc): no se hace nada.
+                                           }));
+}
+
+void MainComponent::saveThen (std::function<void()> action)
+{
+    // Proyecto que nunca se guardó: primero hay que elegir dónde (Guardar como).
+    // Si se cancela ese diálogo, tampoco se continúa.
+    if (projects.getProject().isTemporary())
+    {
+        saveProjectAs (std::move (action));
+        return;
+    }
+
+    const auto result = projects.save();
+    reportResult (result, "Proyecto guardado.");
+
+    if (result.wasOk())
+        action();
+}
+
+void MainComponent::requestQuit()
+{
+    // Una grabación en curso se termina y se añade al proyecto antes de preguntar.
+    if (engine.isRecording())
+        finishRecording();
+
+    // Mientras se carga audio (por ejemplo, esa grabación) todavía no se puede
+    // saber qué cambió: se espera un momento y se vuelve a intentar.
+    if (projects.isLoading())
+    {
+        juce::Timer::callAfterDelay (200, [safe = juce::Component::SafePointer<MainComponent> (this)]
+        {
+            if (safe != nullptr)
+                safe->requestQuit();
+        });
+        return;
+    }
+
+    askToSaveChanges ([] { juce::JUCEApplication::quit(); });
 }
 
 ProjectManager::Callback MainComponent::resultHandler (const juce::String& successMessage)
@@ -918,8 +984,12 @@ void MainComponent::updateWindowTitle()
     if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
     {
         const auto& project = projects.getProject();
-        window->setName ("StemLab - " + project.getName()
-                         + (project.isTemporary() ? " (sin guardar)"_u8 : juce::String()));
+        const auto title = "StemLab - " + project.getName()
+                         + (projects.hasUnsavedChanges() ? juce::String (" *") : juce::String())
+                         + (project.isTemporary() ? " (sin guardar)"_u8 : juce::String());
+
+        if (window->getName() != title)
+            window->setName (title);
     }
 }
 }

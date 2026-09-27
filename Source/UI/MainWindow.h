@@ -16,6 +16,9 @@ public:
 
     void closeButtonPressed() override;
 
+    /** Cerrar la aplicación preguntando antes si hay cambios sin guardar. */
+    void requestQuit();
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

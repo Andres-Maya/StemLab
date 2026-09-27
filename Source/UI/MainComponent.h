@@ -29,9 +29,13 @@ namespace stemlab
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
                             public juce::FileDragAndDropTarget,
-                            private juce::ChangeListener
+                            private juce::ChangeListener,
+                            private juce::Timer
 {
 public:
+    /** Cerrar StemLab: si hay cambios sin guardar pregunta antes. */
+    void requestQuit();
+
     MainComponent (AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai);
     ~MainComponent() override;
 
@@ -56,7 +60,7 @@ private:
     void newProject();
     void openProject();
     void saveProject();
-    void saveProjectAs();
+    void saveProjectAs (std::function<void()> onSaved = nullptr);
     void importAudio();
     void deleteSelectedTrack();
     void removeTrack (AudioTrack& track);
@@ -81,11 +85,16 @@ private:
     void showAbout();
 
     bool ensureIdle (const juce::String& action);
-    void confirmDiscard (std::function<void()> action);
+    /** Si hay cambios sin guardar pregunta Guardar / No guardar / Cancelar, y
+        solo continúa si no se cancela (y, al guardar, si se guardó bien). */
+    void askToSaveChanges (std::function<void()> continueAction);
+    void saveThen (std::function<void()> action);
+    bool unsavedChangesDialogOpen = false;
     ProjectManager::Callback resultHandler (const juce::String& successMessage);
     void reportResult (const juce::Result& result, const juce::String& successMessage);
     void showError (const juce::String& title, const juce::String& message);
     void updateWindowTitle();
+    void timerCallback() override   { updateWindowTitle(); }   // marca * de cambios sin guardar
 
     AudioEngine& engine;
     ProjectManager& projects;
