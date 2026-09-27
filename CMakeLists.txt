@@ -69,6 +69,7 @@ set(STEMLAB_SOURCES
     Source/UI/MainWindow.cpp
     Source/UI/MixerView.cpp
     Source/UI/ParameterAttachments.cpp
+    Source/UI/SeparationWindow.cpp
     Source/UI/StatusBar.cpp
     Source/UI/StemLabLookAndFeel.cpp
     Source/UI/TimeRuler.cpp
