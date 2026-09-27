@@ -11,7 +11,7 @@ namespace stemlab
 namespace
 {
     constexpr float twoPi = juce::MathConstants<float>::twoPi;
-    constexpr double appearSeconds = 0.8;       // lo que tarda una esfera nueva en salir y colocarse
+    constexpr double appearSeconds = 0.8;       // lo que tarda una pista nueva en salir y colocarse
     constexpr int headerHeight = 64;
     constexpr int footerHeight = 58;
 
@@ -19,7 +19,7 @@ namespace
 
     float easeOutBack (float x)
     {
-        // Se pasa un poco y vuelve: la esfera "rebota" al llegar a su sitio.
+        // Se pasa un poco y vuelve: la pista "rebota" al llegar a su sitio.
         x = juce::jlimit (0.0f, 1.0f, x);
         constexpr float c1 = 1.70158f, c3 = c1 + 1.0f;
         return 1.0f + c3 * std::pow (x - 1.0f, 3.0f) + c1 * std::pow (x - 1.0f, 2.0f);
@@ -272,16 +272,17 @@ void SeparationView::paint (juce::Graphics& g)
         placed.push_back ({ centre + (slot - centre) * easeOutCubic (appear), appear });
     }
 
-    // Detrás: los haces que unen el anillo con cada pista (salen del anillo,
-    // no del centro, para no cruzar el porcentaje).
+    // Detrás: los haces que unen el anillo con cada pista.
     for (int i = 0; i < numStems; ++i)
     {
         const auto& [position, appear] = placed[(size_t) i];
         const auto offset = position - centre;
         const auto distance = offset.getDistanceFromOrigin();
 
-        if (appear > 0.0f && distance > mainRadius * 1.32f)
-            drawBeam (g, centre + offset * (mainRadius * 1.32f / distance), position, stems[(size_t) i].colour, appear, i);
+        // Del anillo al borde de la pista: no cruza ni el porcentaje ni su nombre.
+        if (appear > 0.0f && distance > mainRadius * 1.32f + stemRadius)
+            drawBeam (g, centre + offset * (mainRadius * 1.32f / distance),
+                      position - offset * (stemRadius * 0.95f / distance), stems[(size_t) i].colour, appear, i);
     }
 
     drawCentre (g, centre, mainRadius);
@@ -295,16 +296,13 @@ void SeparationView::paint (juce::Graphics& g)
 
         drawStemOrb (g, i, position, stemRadius * easeOutBack (appear), juce::jmin (1.0f, appear * 1.5f));
 
-        // El nombre, por fuera (en el lado contrario a la esfera central).
-        auto outward = position - centre;
-        const auto distance = outward.getDistanceFromOrigin();
-        outward = distance > 1.0f ? outward / distance : juce::Point<float> (0.0f, 1.0f);
-
-        g.setColour (Palette::text.withAlpha (appear));
-        g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-        g.drawText (stems[(size_t) i].name,
-                    juce::Rectangle<float> (120.0f, 18.0f).withCentre (position + outward * (stemRadius * 1.45f + 12.0f)),
-                    juce::Justification::centred, false);
+        // El nombre, dentro de su animación, con sombra para que se lea encima.
+        const auto nameArea = juce::Rectangle<float> (stemRadius * 2.2f, 20.0f).withCentre (position);
+        g.setFont (juce::FontOptions (juce::jlimit (11.0f, 15.0f, stemRadius * 0.34f), juce::Font::bold));
+        g.setColour (juce::Colours::black.withAlpha (0.6f * appear));
+        g.drawText (stems[(size_t) i].name, nameArea.translated (1.0f, 1.5f), juce::Justification::centred, false);
+        g.setColour (juce::Colours::white.withAlpha (appear));
+        g.drawText (stems[(size_t) i].name, nameArea, juce::Justification::centred, false);
     }
 }
 
@@ -441,11 +439,9 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
                 g.setColour (colour.withAlpha (alpha * (1.0f - f) * 0.9f));
                 g.drawEllipse (circle (radius * (0.6f + 0.75f * f)), 1.8f);
             }
-            fillSphere (g, centre, radius * 0.62f, colour, alpha);
             break;
 
         case 1:     // lunas en órbita
-            fillSphere (g, centre, radius * 0.58f, colour, alpha);
             g.setColour (colour.withAlpha (0.35f * alpha));
             g.drawEllipse (circle (radius * 0.95f), 1.0f);
             for (int j = 0; j < 5; ++j)
@@ -460,7 +456,6 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
 
         case 2:     // arcos que giran en sentidos contrarios
         {
-            fillSphere (g, centre, radius * 0.5f, colour, alpha);
             juce::Path arcs;
             arcs.addCentredArc (centre.x, centre.y, radius * 0.78f, radius * 0.78f, t * 2.4f, 0.0f, 3.8f, true);
             arcs.addCentredArc (centre.x, centre.y, radius * 0.98f, radius * 0.98f, -t * 1.7f, 0.0f, 3.2f, true);
@@ -490,7 +485,6 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             g.fillPath (blob);
             g.setColour (colour.brighter (0.4f).withAlpha (alpha));
             g.strokePath (blob, juce::PathStrokeType (1.8f));
-            fillSphere (g, centre, radius * 0.5f, colour, alpha);
             break;
         }
 
@@ -504,7 +498,6 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
                 g.drawLine (juce::Line<float> (centre + direction * radius * 0.66f,
                                                centre + direction * radius * (0.66f + 0.42f * level)), 2.0f);
             }
-            fillSphere (g, centre, radius * 0.58f, colour, alpha);
             break;
 
         default:    // pétalos que giran
@@ -528,7 +521,6 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             g.fillPath (petals);
             g.setColour (colour.brighter (0.4f).withAlpha (alpha));
             g.strokePath (petals, juce::PathStrokeType (1.5f));
-            fillSphere (g, centre, radius * 0.42f, colour, alpha);
             break;
         }
     }

@@ -18,10 +18,10 @@ namespace stemlab
         un círculo y se deforma con picos, con puntos brillantes en los más
         altos. Dibuja la propia canción: recorre su audio en tiempo real y lo
         pone en círculo (sin audio usa una señal sintética).
-      - Cada cierto porcentaje sale de ella otra esfera, del color de una de
-        las pistas que se van a generar (Voz, Batería...). Se coloca alrededor
-        y cada una tiene su propia animación (ondas, órbita, arcos, oscilador,
-        barras, pétalos). Con 4 pistas aparecen al 20, 40, 60 y 80 %.
+      - Cada cierto porcentaje sale del centro una de las pistas que se van a
+        generar (Voz, Batería...): una animación de su color (ondas, órbita,
+        arcos, oscilador, barras, pétalos) con su nombre dentro, que se coloca
+        alrededor. Con 4 pistas aparecen al 20, 40, 60 y 80 %.
       - Al terminar aparecen todas y se muestra "Separación completada".
 
     El progreso y el estado se leen con getProgress / getStatus (60 veces por
