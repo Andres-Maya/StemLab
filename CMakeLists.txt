@@ -104,6 +104,7 @@ function(stemlab_configure_target target)
 
     target_link_libraries(${target}
         PRIVATE
+            StemLabBinaryData
             juce::juce_audio_utils
             juce::juce_dsp
         PUBLIC
@@ -115,13 +116,22 @@ endfunction()
 # ----------------------------------------------------------------------------
 # Aplicación
 # ----------------------------------------------------------------------------
-# Icono de la aplicación (ventana, barra de tareas y StemLab.exe). También es el
-# de los archivos .stemlab: la aplicación los asocia a su icono al arrancar.
+# Icono de la aplicación (ventana, barra de tareas y StemLab.exe): JUCE usa
+# ICON_SMALL (solo el emblema, que se reconoce en pequeño) para 16, 32 y 48 px
+# e ICON_BIG (el logo completo) para 256 px. El .ico se genera al configurar:
+# si cambian las imágenes, hay que volver a ejecutar cmake --preset.
 juce_add_gui_app(StemLab
     PRODUCT_NAME "StemLab"
     COMPANY_NAME "StemLab"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/StemLab.png"
-    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/StemLab.png")
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/StemLabSmall.png")
+
+# Icono de los archivos .stemlab (todos los tamaños de 16 a 256 px). Va dentro
+# del ejecutable; al arrancar, StemLab lo escribe en AppData\Local y lo asocia.
+juce_add_binary_data(StemLabBinaryData
+    HEADER_NAME StemLabBinaryData.h
+    NAMESPACE StemLabBinaryData
+    SOURCES Resources/StemLab.ico)
 
 target_sources(StemLab PRIVATE Source/Application/Main.cpp ${STEMLAB_SOURCES})
 stemlab_configure_target(StemLab)
