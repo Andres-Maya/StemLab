@@ -11,7 +11,9 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
       playButton ("Reproducir / Pausa (Espacio)", IconButton::Icon::play),
       stopButton ("Detener", IconButton::Icon::stop),
       recordButton ("Grabar en la pista seleccionada (R)", IconButton::Icon::record),
+      inputMeter ([this] (int channel) { return engine.getAndResetInputPeak (channel); }),
       masterMeter ([this] (int channel) { return engine.getMixer().getAndResetMasterPeak (channel); }),
+      inputAttachment (engine.getInputGain(), inputSlider),
       masterAttachment (engine.getMixer().getMasterVolume(), masterSlider)
 {
     toStartButton.onClick = [this] { if (onToStart != nullptr) onToStart(); };
@@ -28,7 +30,7 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     timeLabel.setColour (juce::Label::backgroundColourId, Palette::background);
     addAndMakeVisible (timeLabel);
 
-    for (auto* caption : { &bpmCaption, &masterCaption })
+    for (auto* caption : { &bpmCaption, &inputCaption, &masterCaption })
     {
         caption->setFont (juce::FontOptions (11.0f));
         caption->setColour (juce::Label::textColourId, Palette::textDim);
@@ -52,7 +54,18 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     };
     addAndMakeVisible (bpmLabel);
 
+    // Ganancia del micrófono antes de grabar, con su medidor (se mueve aunque no
+    // se esté grabando, para ajustar el nivel antes).
+    inputSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+    inputSlider.setTooltip ("Ganancia de la entrada al grabar. Ajústala para que el medidor quede en verde/amarillo "
+                            "al hablar o tocar; un limitador suave evita que recorte."_u8);
+    inputSlider.setColour (juce::Slider::trackColourId, Palette::record);
+    addAndMakeVisible (inputCaption);
+    addAndMakeVisible (inputSlider);
+    addAndMakeVisible (inputMeter);
+
     deviceLabel.setFont (juce::FontOptions (11.0f));
+    deviceLabel.setMinimumHorizontalScale (0.7f);
     deviceLabel.setJustificationType (juce::Justification::centredRight);
     deviceLabel.setTooltip ("Salida de audio actual (Audio > Configuración de audio)"_u8);
     addAndMakeVisible (deviceLabel);
@@ -115,9 +128,17 @@ void TransportBar::resized()
     bpmCaption.setBounds (bounds.removeFromLeft (34));
     bpmLabel.setBounds (bounds.removeFromLeft (64));
 
-    masterMeter.setBounds (bounds.removeFromRight (80).withSizeKeepingCentre (80, 12));
+    // Entrada (junto a la zona de grabación)
+    bounds.removeFromLeft (12);
+    inputCaption.setBounds (bounds.removeFromLeft (52));
+    inputSlider.setBounds (bounds.removeFromLeft (150));
+    bounds.removeFromLeft (6);
+    inputMeter.setBounds (bounds.removeFromLeft (60).withSizeKeepingCentre (60, 12));
+
+    // Master (a la derecha)
+    masterMeter.setBounds (bounds.removeFromRight (60).withSizeKeepingCentre (60, 12));
     bounds.removeFromRight (8);
-    masterSlider.setBounds (bounds.removeFromRight (220));
+    masterSlider.setBounds (bounds.removeFromRight (170));
     masterCaption.setBounds (bounds.removeFromRight (50));
     bounds.removeFromRight (12);
     deviceLabel.setBounds (bounds);

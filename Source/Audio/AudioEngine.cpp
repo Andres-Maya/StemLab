@@ -4,9 +4,35 @@
 
 namespace stemlab
 {
+namespace
+{
+    /** Limitador suave: lineal hasta 0,8 y luego se curva sin pasar nunca de
+        1,0, así un pico fuerte no produce el recorte brusco (y feo) digital. */
+    inline float softClip (float x) noexcept
+    {
+        constexpr float knee = 0.8f;
+        const auto magnitude = std::abs (x);
+
+        if (magnitude <= knee)
+            return x;
+
+        const auto shaped = knee + (1.0f - knee) * std::tanh ((magnitude - knee) / (1.0f - knee));
+        return std::copysign (shaped, x);
+    }
+}
+
 AudioEngine::AudioEngine()
+    : inputGain (Parameter::continuous ("inputGain", "Entrada",
+                                        juce::NormalisableRange<float> (0.0f, 40.0f, 0.5f), 18.0f, "dB"))
 {
     formatManager.registerBasicFormats();
+    inputGain->setTextFormatter ([] (float db) { return "+" + juce::String (db, 1) + " dB"; });
+    inputGainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inputGain->get()));
+}
+
+float AudioEngine::getAndResetInputPeak (int channel) noexcept
+{
+    return inputPeaks[juce::jlimit (0, 1, channel)].exchange (0.0f, std::memory_order_relaxed);
 }
 
 AudioEngine::~AudioEngine()
@@ -265,15 +291,47 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     const auto blockStart = transport.beginBlock();
     const auto playing = transport.isPlaying();
+    const auto numInputs = juce::jmin (numInputChannels, inputBus.getNumChannels());
 
-    if (playing)
-        recorder.write (inputChannelData, numInputChannels, numSamples, blockStart);
+    inputGainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (inputGain->get()));
 
     // Algunos drivers entregan bloques mayores que el tamaño anunciado: se
     // procesan en trozos que caben en los buffers preparados.
     for (int offset = 0; offset < numSamples;)
     {
         const auto count = juce::jmin (numSamples - offset, blockCapacity);
+
+        // Entrada: ganancia + limitador suave. El medidor funciona siempre; la
+        // grabación solo mientras suena el transporte.
+        if (numInputs > 0 && inputChannelData != nullptr && inputChannelData[0] != nullptr)
+        {
+            const float* processed[2] {};
+            float peaks[2] {};
+
+            for (int i = 0; i < count; ++i)
+            {
+                const auto gain = inputGainSmoothed.getNextValue();
+
+                for (int ch = 0; ch < numInputs; ++ch)
+                {
+                    const auto* source = inputChannelData[ch] != nullptr ? inputChannelData[ch] : inputChannelData[0];
+                    const auto sample = softClip (source[offset + i] * gain);
+                    inputBus.getWritePointer (ch)[i] = sample;
+                    peaks[ch] = juce::jmax (peaks[ch], std::abs (sample));
+                }
+            }
+
+            for (int ch = 0; ch < numInputs; ++ch)
+            {
+                processed[ch] = inputBus.getReadPointer (ch);
+                inputPeaks[ch].store (juce::jmax (inputPeaks[ch].load (std::memory_order_relaxed), peaks[ch]),
+                                      std::memory_order_relaxed);
+            }
+
+            if (playing)
+                recorder.write (processed, numInputs, count, blockStart + offset);
+        }
+
         mixer.render (mixBus, count, blockStart + offset, playing);
         writeToOutputs (outputChannelData, numOutputChannels, offset, count);
         offset += count;
@@ -328,6 +386,9 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     const auto blockSize = juce::jmax (1, device->getCurrentBufferSizeSamples());
 
     mixBus.setSize (2, blockSize, false, true, false);
+    inputBus.setSize (2, blockSize, false, true, false);
+    inputGainSmoothed.reset (newRate, 0.05);
+    inputGainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inputGain->get()));
     mixer.prepare (newRate, blockSize);
 
     if (! juce::exactlyEqual (sampleRate.exchange (newRate), newRate))
@@ -337,6 +398,7 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 void AudioEngine::audioDeviceStopped()
 {
     mixBus.setSize (2, 0);
+    inputBus.setSize (2, 0);
 }
 
 void AudioEngine::handleAsyncUpdate()

@@ -155,6 +155,8 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - Para grabar aparte de la canción, primero crea una pista con el botón **+** (queda seleccionada). Grabar sobre una pista con audio lo tapa en esa zona.
    - Pausar (**R** o Espacio) y volver a pulsar **R** sigue grabando **en la misma pista**, como un fragmento nuevo justo después del anterior.
    - La entrada se elige en **Audio → Configuración de audio**, y la grabación se compensa por la latencia del dispositivo.
+   - **Entrada** (barra superior): ganancia del micrófono antes de grabar, +18 dB por defecto, con su medidor. El medidor se mueve aunque no grabes, para ajustar el nivel antes. Un limitador suave evita el recorte brusco.
+   - En Windows se graba en **modo RAW**, sin la supresión de ruido ni el control automático de ganancia del sistema o del controlador. Esos efectos atenuaban o silenciaban los sonidos constantes. JUCE no pide este modo, así que `cmake/PatchJuceRawCapture.cmake` aplica un pequeño parche a la copia de JUCE descargada. Si el micrófono no admite RAW, se graba como antes.
    - En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
 5. **Editar fragmentos** (clips). La edición no destructiva nunca modifica los archivos de audio:
    - **Clic** en un fragmento lo selecciona. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.

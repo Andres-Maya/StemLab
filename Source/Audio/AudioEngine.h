@@ -73,6 +73,14 @@ public:
     RecordingInfo stopRecording();
     bool isRecording() const noexcept                       { return recorder.isRecording(); }
 
+    /** Ganancia digital aplicada a la entrada antes de grabar (dB), con un
+        limitador suave para que no recorte de forma brusca. */
+    Parameter& getInputGain() noexcept                      { return *inputGain; }
+
+    /** Pico de la entrada (ya con la ganancia) desde la última lectura: para el
+        medidor de entrada, funciona aunque no se esté grabando. */
+    float getAndResetInputPeak (int channel) noexcept;
+
     /** Posición en la línea de tiempo donde quedará la grabación en curso (ya
         compensada por latencia), o nada si todavía no ha llegado audio.
         Puede ser negativa al grabar desde el principio: ese trozo se recorta. */
@@ -109,6 +117,10 @@ private:
     AudioRecorder recorder;
 
     juce::AudioBuffer<float> mixBus;
+    juce::AudioBuffer<float> inputBus;                      // entrada con ganancia (reservado en aboutToStart)
+    std::unique_ptr<Parameter> inputGain;
+    juce::SmoothedValue<float> inputGainSmoothed;
+    std::atomic<float> inputPeaks[2] {};
     std::atomic<double> sampleRate { 44100.0 };
     int recordingLatency = 0;
 
