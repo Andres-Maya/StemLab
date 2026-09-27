@@ -34,6 +34,8 @@ endif()
 # y las pruebas automáticas (Tests/).
 # ----------------------------------------------------------------------------
 set(STEMLAB_SOURCES
+    Source/Application/FileAssociation.cpp
+
     Source/Audio/AudioClip.cpp
     Source/Audio/AudioEngine.cpp
     Source/Audio/AudioFileLoader.cpp
@@ -113,9 +115,13 @@ endfunction()
 # ----------------------------------------------------------------------------
 # Aplicación
 # ----------------------------------------------------------------------------
+# Icono de la aplicación (ventana, barra de tareas y StemLab.exe). También es el
+# de los archivos .stemlab: la aplicación los asocia a su icono al arrancar.
 juce_add_gui_app(StemLab
     PRODUCT_NAME "StemLab"
-    COMPANY_NAME "StemLab")
+    COMPANY_NAME "StemLab"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/StemLab.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/StemLab.png")
 
 target_sources(StemLab PRIVATE Source/Application/Main.cpp ${STEMLAB_SOURCES})
 stemlab_configure_target(StemLab)
