@@ -14,7 +14,7 @@ namespace
     constexpr double minimumVisibleSeconds = 0.25;     // zoom máximo: 0,25 s a lo ancho
     constexpr double zoomStep = 1.5;
 
-    enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId };
+    enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId, copyId, cutId, pasteBelowId };
 }
 
 void TrackListView::Content::paint (juce::Graphics& g)
@@ -210,9 +210,14 @@ void TrackListView::refresh()
                                                 engine.getFormatManager(), thumbnailCache);
 
         row->onSelect = [this] (TrackView& view) { selectTrack (view.getTrackPointer()); };
+        row->onHeaderClicked = [this] (TrackView& view) { selectClip (view.getTrackPointer(), 0); };
         row->onSeek = [this] (double seconds) { seekTo (seconds); };
         row->onDelete = [this] (TrackView& view) { if (onDeleteRequested != nullptr) onDeleteRequested (view.getTrack()); };
-        row->onRenamed = [this] (TrackView& view) { if (onTrackRenamed != nullptr) onTrackRenamed (view.getTrack()); };
+        row->onRenamed = [this] (TrackView& view, const juce::String& oldName)
+        {
+            if (onTrackRenamed != nullptr)
+                onTrackRenamed (view.getTrackPointer(), oldName);
+        };
         row->onHeaderMenu = [this] (TrackView& view) { showTrackMenu (view); };
         row->onReorderDrag = [this] (TrackView& view, int parentY, int grabY) { reorderDrag (view, parentY, grabY); };
         row->onReorderEnd = [this] (TrackView& view) { reorderEnd (view); };
@@ -348,11 +353,12 @@ void TrackListView::moveTrack (int fromIndex, int toIndex)
         return;
     }
 
+    const auto track = rows[static_cast<size_t> (fromIndex)]->getTrackPointer();
     engine.getMixer().moveTrack (fromIndex, toIndex);
     refresh();      // las filas se reordenan según el mezclador
 
     if (onTracksReordered != nullptr)
-        onTracksReordered();
+        onTracksReordered (track, fromIndex, toIndex);
 }
 
 void TrackListView::showTrackMenu (TrackView& view)
@@ -365,6 +371,10 @@ void TrackListView::showTrackMenu (TrackView& view)
     juce::PopupMenu menu;
     menu.addItem (renameId, "Cambiar nombre (F2)");
     menu.addItem (addBelowId, "Añadir pista debajo"_u8);
+    menu.addSeparator();
+    menu.addItem (copyId, "Copiar pista (Ctrl+C)");
+    menu.addItem (cutId, "Cortar pista (Ctrl+X)");
+    menu.addItem (pasteBelowId, "Pegar pista debajo (Ctrl+V)", canPasteTrack != nullptr && canPasteTrack());
     menu.addSeparator();
     menu.addItem (moveUpId, "Subir pista", index > 0);
     menu.addItem (moveDownId, "Bajar pista", index + 1 < static_cast<int> (rows.size()));
@@ -393,6 +403,9 @@ void TrackListView::showTrackMenu (TrackView& view)
             case moveUpId:      safe->moveTrack (index, index - 1); break;
             case moveDownId:    safe->moveTrack (index, index + 1); break;
             case deleteId:      if (safe->onDeleteRequested != nullptr) safe->onDeleteRequested (*track); break;
+            case copyId:        if (safe->onCopyTrack != nullptr) safe->onCopyTrack (track); break;
+            case cutId:         if (safe->onCutTrack != nullptr) safe->onCutTrack (track); break;
+            case pasteBelowId:  if (safe->onPasteTrack != nullptr) safe->onPasteTrack (index + 1); break;
             default:            break;
         }
     });

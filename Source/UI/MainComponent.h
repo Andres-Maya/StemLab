@@ -68,6 +68,19 @@ private:
     /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
     void addTrack (int insertIndex = -1);
 
+    /** Justo debajo de la pista seleccionada, o -1 (al final) si no hay ninguna. */
+    int indexBelowSelectedTrack() const;
+
+    // Portapapeles: Ctrl+C / Ctrl+X actúan sobre el fragmento seleccionado o,
+    // si no hay (clic en la cabecera), sobre la pista entera. Ctrl+V pega lo
+    // último que se copió.
+    void copySelection();
+    void cutSelection();
+    void paste();
+    void copyTrack (const std::shared_ptr<AudioTrack>& track);
+    void cutTrack (const std::shared_ptr<AudioTrack>& track);
+    void pasteTrack (int insertIndex = -1);
+
     // Edición de fragmentos (clips)
     void undo();
     void redo();
@@ -113,6 +126,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
+    std::shared_ptr<AudioTrack> trackClipboard;     // copia de la pista copiada o cortada
     std::weak_ptr<AudioTrack> recordingTarget;      // pista donde va la grabación en curso
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

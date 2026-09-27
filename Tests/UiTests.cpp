@@ -30,7 +30,7 @@ namespace
                 engine.getMixer().addTrack (std::make_shared<AudioTrack> ("Pista " + juce::String (added)), insertIndex);
                 view.refresh();
             };
-            view.onTracksReordered = [&] { ++reordered; };
+            view.onTracksReordered = [&] (std::shared_ptr<AudioTrack>, int, int) { ++reordered; };
             view.setSize (900, 330);
             view.setVisible (true);
             view.refresh();
