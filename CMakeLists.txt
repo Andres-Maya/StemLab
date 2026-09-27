@@ -117,8 +117,8 @@ endfunction()
 # Aplicación
 # ----------------------------------------------------------------------------
 # Icono de la aplicación (ventana, barra de tareas y StemLab.exe): JUCE usa
-# ICON_SMALL (solo el emblema, que se reconoce en pequeño) para 16, 32 y 48 px
-# e ICON_BIG (el logo completo) para 256 px. El .ico se genera al configurar:
+# ICON_SMALL (48 px) para 16, 32 y 48 px e ICON_BIG (256 px) para 256 px; con
+# esos tamaños exactos no tiene que ampliar. El .ico se genera al configurar:
 # si cambian las imágenes, hay que volver a ejecutar cmake --preset.
 juce_add_gui_app(StemLab
     PRODUCT_NAME "StemLab"
