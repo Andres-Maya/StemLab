@@ -8,7 +8,6 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
                       juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache)
     : track (std::move (audioTrack)),
       colour (trackColour),
-      armButton ("Grabar en esta pista", IconButton::Icon::record),
       deleteButton ("Eliminar pista", IconButton::Icon::close),
       meter ([t = track.get()] (int channel) { return t->getAndResetPeak (channel); }),
       waveform (*track, formatManager, cache),
@@ -23,12 +22,6 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     nameLabel.setTooltip ("Doble clic para renombrar");
     nameLabel.onTextChange = [this] { track->setName (nameLabel.getText()); };
     addAndMakeVisible (nameLabel);
-
-    // El botón de armar se enciende en rojo en la pista elegida para grabar.
-    armButton.setActiveColour (Palette::record);
-    armButton.setToggleState (track->isArmed(), juce::dontSendNotification);
-    armButton.onClick = [this] { if (onArm != nullptr) onArm (*this); };
-    addAndMakeVisible (armButton);
 
     muteButton.setColour (juce::TextButton::buttonOnColourId, Palette::mute);
     soloButton.setColour (juce::TextButton::buttonOnColourId, Palette::solo);
@@ -86,8 +79,8 @@ void TrackView::setTimelineLength (double seconds)
 
 void TrackView::trackChanged()
 {
-    armButton.setToggleState (track->isArmed(), juce::dontSendNotification);
     waveform.clipsChanged();
+    repaint();      // la franja se pone roja mientras se graba en esta pista
 }
 
 void TrackView::parameterChanged (Parameter&)
@@ -102,7 +95,7 @@ void TrackView::paint (juce::Graphics& g)
     g.setColour (selected ? Palette::panelLight : Palette::panel);
     g.fillRect (header);
 
-    // Franja de color de la pista (roja si está armada para grabar).
+    // Franja de color de la pista (roja mientras se graba en ella).
     g.setColour (track->isArmed() ? Palette::record : colour);
     g.fillRect (header.removeFromLeft (4.0f));
 
@@ -125,8 +118,6 @@ void TrackView::resized()
     soloButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (3);
     muteButton.setBounds (top.removeFromRight (24));
-    top.removeFromRight (3);
-    armButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (3);
     nameLabel.setBounds (top);
 

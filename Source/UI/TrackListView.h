@@ -38,7 +38,6 @@ public:
 
     std::function<void (std::shared_ptr<AudioTrack>)> onSelectionChanged;
     std::function<void (AudioTrack&)> onDeleteRequested;
-    std::function<void (std::shared_ptr<AudioTrack>)> onArmRequested;
     std::function<void (std::shared_ptr<AudioTrack>, juce::uint32 clipId, double seconds)> onContextMenu;
     std::function<void()> onClipsEdited;
     std::function<void()> onAddTrack;

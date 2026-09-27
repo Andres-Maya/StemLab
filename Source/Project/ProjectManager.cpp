@@ -223,7 +223,6 @@ void ProjectManager::addRecording (const RecordingInfo& recording, std::weak_ptr
     TrackRequest request;
     request.name = createTrackName ("Grabación"_u8);
     request.target = std::move (target);
-    request.armed = true;
     request.clips.push_back ({ recording.file, startSeconds, 0.0, -1.0 });
 
     std::vector<TrackRequest> requests;
@@ -390,7 +389,7 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
             clips.push_back ({ AudioClip::createId(), source, start, offset, length });
         }
 
-        // ¿Añadir a una pista existente (grabación sobre la pista armada)?
+        // ¿Añadir a una pista existente (grabación sobre la pista seleccionada)?
         auto target = request.target.lock();
         const auto& tracks = mixer.getTracks();
 

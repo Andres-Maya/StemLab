@@ -61,7 +61,6 @@ private:
     void deleteSelectedTrack();
     void removeTrack (AudioTrack& track);
     void addTrack();
-    void toggleArm (std::shared_ptr<AudioTrack> track);
 
     // Edición de fragmentos (clips)
     void splitAtPlayhead();
