@@ -11,6 +11,7 @@ AudioEngine::AudioEngine()
 
 AudioEngine::~AudioEngine()
 {
+    stopTimer();
     deviceManager.removeChangeListener (this);
     deviceManager.removeAudioCallback (this);
     deviceManager.closeAudioDevice();
@@ -28,7 +29,12 @@ juce::String AudioEngine::initialise (const juce::XmlElement* savedDeviceState)
     // El AudioDeviceManager avisa cuando cambia la lista de dispositivos del
     // sistema (en Windows, también cuando cambia la salida predeterminada).
     deviceManager.addChangeListener (this);
-    updateFollowedOutput();
+    initialised = true;
+    updateDevice();
+
+    // Vigilancia: si el dispositivo se cierra o se detiene (p. ej. al conectar o
+    // desconectar audífonos), se intenta recuperar sin reiniciar StemLab.
+    startTimer (1500);
 
     return error;
 }
@@ -40,19 +46,20 @@ void AudioEngine::setFollowSystemOutput (bool shouldFollow)
 
     // Olvidar la última predeterminada vista: al activarlo se cambia a ella ya.
     knownSystemOutput = {};
-    updateFollowedOutput();
+    updateDevice();
 }
 
-juce::String AudioEngine::getSystemDefaultOutputName() const
+juce::String AudioEngine::getSystemDefaultDeviceName (bool input) const
 {
-    // WASAPI coloca la salida predeterminada de Windows en el índice que
-    // devuelve getDefaultDeviceIndex (el 0).
-    if (deviceManager.getCurrentAudioDevice() != nullptr)
+    // WASAPI coloca el dispositivo predeterminado de Windows en el índice que
+    // devuelve getDefaultDeviceIndex (el 0). La lista solo es válida después
+    // de initialise(), cuando el AudioDeviceManager ya escaneó los dispositivos.
+    if (initialised)
     {
         if (auto* type = deviceManager.getCurrentDeviceTypeObject())
         {
-            const auto names = type->getDeviceNames (false);
-            const auto index = type->getDefaultDeviceIndex (false);
+            const auto names = type->getDeviceNames (input);
+            const auto index = type->getDefaultDeviceIndex (input);
 
             if (juce::isPositiveAndBelow (index, names.size()))
                 return names[index];
@@ -62,43 +69,134 @@ juce::String AudioEngine::getSystemDefaultOutputName() const
     return {};
 }
 
-void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
+juce::String AudioEngine::getSystemDefaultOutputName() const
 {
-    updateFollowedOutput();
+    return getSystemDefaultDeviceName (false);
 }
 
-void AudioEngine::updateFollowedOutput()
+bool AudioEngine::isDeviceRunning() const
 {
-    if (! followSystemOutput || applyingSystemOutput)
+    auto* device = deviceManager.getCurrentAudioDevice();
+    return device != nullptr && device->isPlaying();
+}
+
+juce::String AudioEngine::getCurrentOutputName() const
+{
+    return isDeviceRunning() ? deviceManager.getAudioDeviceSetup().outputDeviceName : juce::String();
+}
+
+void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    updateDevice();
+}
+
+void AudioEngine::timerCallback()
+{
+    updateDevice();
+}
+
+void AudioEngine::updateDevice()
+{
+    if (! initialised || applyingDeviceChange)
         return;
 
-    const auto systemOutput = getSystemDefaultOutputName();
+    auto* type = deviceManager.getCurrentDeviceTypeObject();
 
-    if (systemOutput.isEmpty())
+    if (type == nullptr)
         return;
 
     auto setup = deviceManager.getAudioDeviceSetup();
-    const auto systemChanged = systemOutput != knownSystemOutput;
-    knownSystemOutput = systemOutput;
+    const auto systemOutput = getSystemDefaultDeviceName (false);
+    const auto systemInput = getSystemDefaultDeviceName (true);
 
-    if (setup.outputDeviceName == systemOutput)
-        return;
+    // Un dispositivo cerrado o detenido nunca vuelve solo: JUCE solo reabre
+    // automáticamente si todavía hay uno abierto. Hay que reabrirlo.
+    auto needsReopen = false;
 
-    if (! systemChanged)
+    if (isDeviceRunning())
     {
-        // Windows no cambió de salida pero el dispositivo sí: lo eligió el
-        // usuario en la configuración (incluso "ninguna"). Se respeta.
-        followSystemOutput = false;
-        return;
+        lastRunningSetup = setup;
+        hadRunningDevice = true;
+    }
+    else if (hadRunningDevice || followSystemOutput)
+    {
+        needsReopen = true;
+
+        // Tras un fallo al abrir, JUCE borra los nombres de la configuración:
+        // se parte de la última que funcionó.
+        if (setup.outputDeviceName.isEmpty())
+            setup.outputDeviceName = lastRunningSetup.outputDeviceName;
+
+        if (setup.inputDeviceName.isEmpty())
+            setup.inputDeviceName = lastRunningSetup.inputDeviceName;
     }
 
-    setup.outputDeviceName = systemOutput;
+    if (followSystemOutput && systemOutput.isNotEmpty())
+    {
+        const auto systemChanged = systemOutput != knownSystemOutput;
+        knownSystemOutput = systemOutput;
 
-    const juce::ScopedValueSetter<bool> applying (applyingSystemOutput, true);
-    const auto error = deviceManager.setAudioDeviceSetup (setup, true);
+        if (setup.outputDeviceName != systemOutput)
+        {
+            if (! systemChanged && ! needsReopen)
+            {
+                // Windows no cambió de salida pero el dispositivo sí: lo eligió
+                // el usuario en la configuración (incluso "ninguna"). Se respeta.
+                followSystemOutput = false;
+                return;
+            }
+
+            setup.outputDeviceName = systemOutput;
+            needsReopen = true;
+        }
+    }
+
+    if (! needsReopen)
+        return;
+
+    // No reintentar en bucle si el dispositivo sigue fallando.
+    const auto now = juce::Time::getMillisecondCounter();
+
+    if (! isDeviceRunning() && now - lastRecoveryAttempt < 3000)
+        return;
+
+    lastRecoveryAttempt = now;
+
+    // Al conectar un headset, el controlador puede desactivar el micrófono
+    // interno: una entrada que ya no existe impide abrir el dispositivo.
+    const auto outputs = type->getDeviceNames (false);
+    const auto inputs = type->getDeviceNames (true);
+
+    if (! outputs.contains (setup.outputDeviceName))
+        setup.outputDeviceName = systemOutput;
+
+    if (setup.inputDeviceName.isNotEmpty() && ! inputs.contains (setup.inputDeviceName))
+        setup.inputDeviceName = systemInput;
+
+    const juce::ScopedValueSetter<bool> applying (applyingDeviceChange, true);
+
+    // Un dispositivo abierto pero detenido no se reinicia con la misma
+    // configuración: hay que cerrarlo primero.
+    if (deviceManager.getCurrentAudioDevice() != nullptr && ! isDeviceRunning())
+        deviceManager.closeAudioDevice();
+
+    auto error = deviceManager.setAudioDeviceSetup (setup, true);
+
+    if (error.isNotEmpty() && setup.inputDeviceName != systemInput)
+    {
+        setup.inputDeviceName = systemInput;
+        error = deviceManager.setAudioDeviceSetup (setup, true);
+    }
+
+    if (error.isNotEmpty() && setup.inputDeviceName.isNotEmpty())
+    {
+        // Último recurso: solo salida. Se puede reproducir aunque no grabar.
+        setup.inputDeviceName = {};
+        error = deviceManager.setAudioDeviceSetup (setup, true);
+    }
 
     if (error.isNotEmpty())
-        DBG ("No se pudo cambiar a la salida del sistema: " << error);
+        DBG ("No se pudo abrir el dispositivo de audio: " << error);
 }
 
 //==============================================================================
