@@ -25,6 +25,13 @@ namespace
         separateId,
         cancelSeparationId,
         aboutId,
+        splitClipId,
+        cutClipId,
+        copyClipId,
+        pasteClipId,
+        deleteClipId,
+        addTrackId,
+        armTrackId,
         modelBaseId = 1000
     };
 
@@ -68,7 +75,15 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     addAndMakeVisible (transportBar);
 
     trackList.onSelectionChanged = [this] (std::shared_ptr<AudioTrack> track) { mixer.setTrack (std::move (track)); };
-    trackList.onDeleteRequested = [this] (AudioTrack& track) { projects.removeTrack (track); };
+    trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
+    trackList.onArmRequested = [this] (std::shared_ptr<AudioTrack> track) { toggleArm (std::move (track)); };
+    trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
+    trackList.onAddTrack = [this] { addTrack(); };
+    trackList.onRemoveTrack = [this] { deleteSelectedTrack(); };
+    trackList.onContextMenu = [this] (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
+    {
+        showClipMenu (std::move (track), clipId, seconds);
+    };
     addAndMakeVisible (trackList);
 
     addAndMakeVisible (mixer);
@@ -125,8 +140,14 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 
     if (key == juce::KeyPress::spaceKey)                    { togglePlayPause(); return true; }
     if (key == juce::KeyPress::homeKey)                     { engine.getTransport().setPosition (0); return true; }
-    if (key == juce::KeyPress::deleteKey)                   { deleteSelectedTrack(); return true; }
+    if (key == juce::KeyPress (juce::KeyPress::deleteKey, command, 0)) { deleteSelectedTrack(); return true; }
+    if (key == juce::KeyPress::deleteKey)                   { deleteSelectedClip(); return true; }
     if (key == juce::KeyPress ('r'))                        { toggleRecording(); return true; }
+    if (key == juce::KeyPress ('s'))                        { splitAtPlayhead(); return true; }
+    if (key == juce::KeyPress ('x', command, 0))            { cutSelectedClip(); return true; }
+    if (key == juce::KeyPress ('c', command, 0))            { copySelectedClip(); return true; }
+    if (key == juce::KeyPress ('v', command, 0))            { pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); return true; }
+    if (key == juce::KeyPress ('t', command, 0))            { addTrack(); return true; }
     if (key == juce::KeyPress ('n', command, 0))            { newProject(); return true; }
     if (key == juce::KeyPress ('o', command, 0))            { openProject(); return true; }
     if (key == juce::KeyPress ('s', commandShift, 0))       { saveProjectAs(); return true; }
@@ -169,8 +190,22 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             break;
 
         case 1:
-            addItem (menu, deleteTrackId, "Eliminar pista seleccionada", "Supr", trackList.getSelectedTrack() != nullptr);
+        {
+            const auto hasTrack = trackList.getSelectedTrack() != nullptr;
+            const auto hasClip = trackList.getSelectedClipId() != 0;
+
+            menu.addSectionHeader ("Fragmentos");
+            addItem (menu, splitClipId, "Dividir en el cabezal", "S", hasTrack);
+            addItem (menu, cutClipId, "Cortar", "Ctrl+X", hasClip);
+            addItem (menu, copyClipId, "Copiar", "Ctrl+C", hasClip);
+            addItem (menu, pasteClipId, "Pegar en el cabezal", "Ctrl+V", hasTrack && clipboard.has_value());
+            addItem (menu, deleteClipId, "Eliminar fragmento", "Supr", hasClip);
+            menu.addSectionHeader ("Pistas");
+            addItem (menu, addTrackId, "Añadir pista"_u8, "Ctrl+T");
+            addItem (menu, armTrackId, "Grabar en la pista seleccionada", {}, hasTrack);
+            addItem (menu, deleteTrackId, "Eliminar pista seleccionada", "Ctrl+Supr", hasTrack);
             break;
+        }
 
         case 2:
             addItem (menu, showFolderId, "Mostrar carpeta del proyecto");
@@ -244,6 +279,13 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case separateId:            separateInstruments(); break;
         case cancelSeparationId:    ai.cancel(); break;
         case aboutId:               showAbout(); break;
+        case splitClipId:           splitAtPlayhead(); break;
+        case cutClipId:             cutSelectedClip(); break;
+        case copyClipId:            copySelectedClip(); break;
+        case pasteClipId:           pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); break;
+        case deleteClipId:          deleteSelectedClip(); break;
+        case addTrackId:            addTrack(); break;
+        case armTrackId:            toggleArm (trackList.getSelectedTrack()); break;
         default:                    break;
     }
 }
@@ -391,7 +433,205 @@ void MainComponent::importAudio()
 void MainComponent::deleteSelectedTrack()
 {
     if (const auto track = trackList.getSelectedTrack())
-        projects.removeTrack (*track);
+        removeTrack (*track);
+    else
+        statusBar.setMessage ("Selecciona primero la pista que quieres eliminar.");
+}
+
+void MainComponent::removeTrack (AudioTrack& track)
+{
+    if (engine.isRecording() && track.isArmed())
+    {
+        showError ("Eliminar pista", "No se puede eliminar la pista mientras se graba en ella."_u8);
+        return;
+    }
+
+    projects.removeTrack (track);
+}
+
+void MainComponent::addTrack()
+{
+    const auto track = projects.addEmptyTrack ("Pista");
+    trackList.refresh();
+    trackList.selectTrack (track);
+    statusBar.setMessage ("Pista añadida. Pulsa su botón rojo para grabar en ella."_u8);
+}
+
+void MainComponent::toggleArm (std::shared_ptr<AudioTrack> track)
+{
+    if (track == nullptr)
+        return;
+
+    if (engine.isRecording())
+    {
+        statusBar.setMessage ("Detén la grabación antes de cambiar de pista."_u8);
+        return;
+    }
+
+    projects.setArmedTrack (track->isArmed() ? nullptr : track);
+}
+
+//==============================================================================
+namespace
+{
+    /** Clip sobre el que actúa "Dividir": el seleccionado si contiene la
+        posición; si no, el de más arriba que la contenga. */
+    const AudioClip* clipAt (const std::vector<AudioClip>& clips, juce::uint32 preferredId, juce::int64 position)
+    {
+        for (const auto& clip : clips)
+            if (clip.id == preferredId && clip.contains (position))
+                return &clip;
+
+        for (auto it = clips.rbegin(); it != clips.rend(); ++it)
+            if (it->contains (position))
+                return &*it;
+
+        return nullptr;
+    }
+}
+
+void MainComponent::splitAtPlayhead()
+{
+    const auto track = trackList.getSelectedTrack();
+
+    if (track == nullptr)
+    {
+        statusBar.setMessage ("Selecciona una pista para dividir.");
+        return;
+    }
+
+    auto clips = track->getClips();
+    const auto position = engine.getTransport().getPosition();
+    const auto* target = clipAt (clips, trackList.getSelectedClipId(), position);
+
+    if (target == nullptr)
+    {
+        statusBar.setMessage ("El cabezal no está sobre ningún fragmento de la pista seleccionada."_u8);
+        return;
+    }
+
+    const auto rightHalf = ClipEditing::split (clips, target->id, position);
+
+    if (rightHalf == 0)
+    {
+        statusBar.setMessage ("Demasiado cerca del borde del fragmento para dividir.");
+        return;
+    }
+
+    track->setClips (std::move (clips));
+    trackList.selectClip (track, rightHalf);
+    projects.notifyTracksEdited();
+    statusBar.setMessage ("Fragmento dividido en el cabezal.");
+}
+
+void MainComponent::copySelectedClip()
+{
+    const auto track = trackList.getSelectedTrack();
+
+    if (track == nullptr)
+        return;
+
+    auto clips = track->getClips();
+
+    if (const auto* clip = ClipEditing::find (clips, trackList.getSelectedClipId()))
+    {
+        clipboard = *clip;
+        statusBar.setMessage ("Fragmento copiado. Ctrl+V lo pega en el cabezal.");
+    }
+}
+
+void MainComponent::cutSelectedClip()
+{
+    const auto track = trackList.getSelectedTrack();
+
+    if (track == nullptr)
+        return;
+
+    auto clips = track->getClips();
+
+    if (const auto* clip = ClipEditing::find (clips, trackList.getSelectedClipId()))
+    {
+        clipboard = *clip;
+        ClipEditing::remove (clips, clip->id);
+        track->setClips (std::move (clips));
+        trackList.selectClip (track, 0);
+        projects.notifyTracksEdited();
+        statusBar.setMessage ("Fragmento cortado. Ctrl+V lo pega en el cabezal.");
+    }
+}
+
+void MainComponent::pasteClip (std::shared_ptr<AudioTrack> track, juce::int64 position)
+{
+    if (! clipboard.has_value())
+    {
+        statusBar.setMessage ("No hay nada copiado.");
+        return;
+    }
+
+    if (track == nullptr)
+    {
+        statusBar.setMessage ("Selecciona la pista donde pegar.");
+        return;
+    }
+
+    auto clip = *clipboard;
+    clip.id = AudioClip::createId();
+    clip.timelineStart = juce::jmax<juce::int64> (0, position);
+
+    track->addClip (clip);
+    trackList.selectClip (track, clip.id);
+    projects.notifyTracksEdited();
+    statusBar.setMessage ("Fragmento pegado.");
+}
+
+void MainComponent::deleteSelectedClip()
+{
+    const auto track = trackList.getSelectedTrack();
+    const auto clipId = trackList.getSelectedClipId();
+
+    if (track == nullptr || clipId == 0)
+    {
+        statusBar.setMessage ("Selecciona un fragmento (clic sobre él) para eliminarlo."_u8);
+        return;
+    }
+
+    auto clips = track->getClips();
+
+    if (ClipEditing::remove (clips, clipId))
+    {
+        track->setClips (std::move (clips));
+        trackList.selectClip (track, 0);
+        projects.notifyTracksEdited();
+        statusBar.setMessage ("Fragmento eliminado.");
+    }
+}
+
+void MainComponent::showClipMenu (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
+{
+    const auto position = static_cast<juce::int64> (seconds * engine.getSampleRate());
+    const auto hasClip = clipId != 0;
+
+    juce::PopupMenu menu;
+    addItem (menu, splitClipId, "Dividir en el cabezal", "S");
+    addItem (menu, cutClipId, "Cortar", "Ctrl+X", hasClip);
+    addItem (menu, copyClipId, "Copiar", "Ctrl+C", hasClip);
+    addItem (menu, pasteClipId, "Pegar aquí"_u8, {}, clipboard.has_value());
+    addItem (menu, deleteClipId, "Eliminar fragmento", "Supr", hasClip);
+    menu.addSeparator();
+    addItem (menu, armTrackId, track != nullptr && track->isArmed() ? juce::String ("No grabar en esta pista")
+                                                                    : juce::String ("Grabar en esta pista"));
+
+    menu.showMenuAsync (juce::PopupMenu::Options(),
+                        [safe = juce::Component::SafePointer<MainComponent> (this), track, position] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+
+        if (result == pasteClipId)
+            safe->pasteClip (track, position);   // "Pegar aquí": donde se hizo clic
+        else
+            safe->menuItemSelected (result, 0);
+    });
 }
 
 void MainComponent::showProjectFolder()
@@ -441,12 +681,28 @@ void MainComponent::toggleRecording()
         return;
     }
 
+    // Se graba en la pista armada. Si no hay ninguna, se crea una pista nueva
+    // (nunca se graba por sorpresa encima de una canción importada).
+    auto target = projects.getArmedTrack();
+
+    if (target == nullptr)
+    {
+        target = projects.addEmptyTrack ("Grabación"_u8);
+        projects.setArmedTrack (target);
+        trackList.refresh();
+    }
+
     const auto result = engine.startRecording (projects.createRecordingFile());
 
     if (result.failed())
+    {
         showError ("No se puede grabar", result.getErrorMessage());
-    else
-        statusBar.setMessage ("Grabando... pulsa R o Detener para terminar.");
+        return;
+    }
+
+    recordingTarget = target;
+    trackList.selectTrack (target);
+    statusBar.setMessage ("Grabando en \"" + target->getName() + "\"... pulsa R para pausar y R para seguir en la misma pista.");
 }
 
 void MainComponent::finishRecording()
@@ -454,8 +710,11 @@ void MainComponent::finishRecording()
     const auto recording = engine.stopRecording();
     engine.getTransport().pause();
 
+    // La grabación se añade como un fragmento más de la misma pista; al volver
+    // a pulsar R se sigue grabando en ella, justo después.
     statusBar.setMessage ("Procesando la grabación..."_u8);
-    projects.addRecording (recording, resultHandler ("Grabación añadida como pista nueva."_u8));
+    projects.addRecording (recording, recordingTarget,
+                           resultHandler ("Fragmento grabado. Pulsa R para seguir grabando en la misma pista."_u8));
 }
 
 void MainComponent::separateInstruments()
@@ -468,9 +727,10 @@ void MainComponent::separateInstruments()
     if (source == nullptr && ! engine.getMixer().getTracks().empty())
         source = engine.getMixer().getTracks().front();
 
-    if (source == nullptr)
+    if (source == nullptr || ! source->hasClips())
     {
-        showError ("Separar instrumentos", "Primero importa una canción (Archivo > Importar audio...)."_u8);
+        showError ("Separar instrumentos", "Primero importa una canción (Archivo > Importar audio...) "
+                                           "y selecciona su pista."_u8);
         return;
     }
 
@@ -503,10 +763,18 @@ void MainComponent::separationFinished (const SeparationResult& result, std::sha
         return;
     }
 
-    // Los stems se colocan donde empieza la pista original.
-    const auto startSeconds = source != nullptr
-                            ? static_cast<double> (source->getStartSample()) / source->getSampleRate()
-                            : 0.0;
+    // Los stems se alinean con el archivo original: su muestra 0 va donde
+    // estaría la muestra 0 del primer clip de la pista.
+    double startSeconds = 0.0;
+
+    if (source != nullptr)
+    {
+        const auto clips = source->getClips();
+
+        if (! clips.empty() && clips.front().source != nullptr)
+            startSeconds = static_cast<double> (clips.front().timelineStart - clips.front().sourceOffset)
+                         / clips.front().source->sampleRate;
+    }
 
     std::vector<ProjectManager::NewTrack> tracks;
 
