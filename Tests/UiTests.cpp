@@ -4,6 +4,8 @@
 #include "Audio/AudioEngine.h"
 #include "UI/StemLabLookAndFeel.h"
 #include "UI/SeparationWindow.h"
+
+#include <algorithm>
 #include "UI/TrackListView.h"
 #include "AI/DemucsSeparator.h"
 #include "Utils/Strings.h"
@@ -140,6 +142,58 @@ namespace
                 button->triggerClick();
             runLoopUntil ([&] { return cancelled; }, 1000);
             CHECK (cancelled, "el botón Cancelar avisa para cancelar la separación");
+
+            section ("Anillo de frecuencias con el audio de la canción");
+
+            // Canción de prueba: bombo, bajo, voz (con armónicos) y platillos, 6 s a 48 kHz.
+            auto song = std::make_shared<ClipSource>();
+            song->sampleRate = 48000.0;
+            song->audio.setSize (2, 48000 * 6);
+            juce::Random random (7);
+
+            for (int i = 0; i < song->audio.getNumSamples(); ++i)
+            {
+                const auto t = i / 48000.0;
+                const auto beat = std::fmod (t, 0.5);
+                const auto twoPi = juce::MathConstants<double>::twoPi;
+                const auto voice = 220.0 * (1.0 + 0.01 * std::sin (twoPi * 5.0 * t));
+                const auto value = 0.5 * std::sin (twoPi * 60.0 * beat) * std::exp (-beat * 9.0)
+                                 + 0.15 * std::sin (twoPi * 110.0 * t)
+                                 + 0.12 * (std::sin (twoPi * voice * t) + 0.5 * std::sin (twoPi * 2.0 * voice * t)
+                                           + 0.3 * std::sin (twoPi * 3.0 * voice * t) + 0.2 * std::sin (twoPi * 5.0 * voice * t))
+                                 + (0.05 + 0.15 * std::exp (-std::fmod (t + 0.25, 0.5) * 30.0)) * (random.nextFloat() * 2.0 - 1.0);
+                song->audio.setSample (0, i, (float) value);
+                song->audio.setSample (1, i, (float) value);
+            }
+
+            SeparationView ring ("Mi canción"_u8, trackColourFor ("Mi canción"_u8, 0), stems);
+            ring.getProgress = [] { return 0.45; };
+            ring.getStatus = [] { return juce::String ("Separando instrumentos (cpu)..."); };
+            ring.setSourceAudio (song, 0, song->getLength());
+
+            for (int frame = 0; frame < 90; ++frame)
+                ring.advance (1.0 / 60.0);
+
+            const auto& levels = ring.getRingLevels();
+            const auto loudest = *std::max_element (levels.begin(), levels.end());
+            CHECK ((int) levels.size() == SeparationView::ringPoints && loudest > 0.5f,
+                   "el anillo sigue el audio de la canción (pico " << loudest << ")");
+            CHECK (levels.front() < 0.15f && levels.back() < 0.15f, "abajo, donde se une el círculo, se calma (sin salto)");
+            saveSnapshot (ring.createComponentSnapshot (ring.getLocalBounds()), "separacion-anillo.png");
+
+            const auto before = levels;
+            ring.advance (0.2);
+            CHECK (ring.getRingLevels() != before, "se mueve con la música");
+
+            auto silence = std::make_shared<ClipSource>();
+            silence->sampleRate = 48000.0;
+            silence->audio.setSize (2, 48000 * 2);
+            silence->audio.clear();
+            SeparationView quiet ("Silencio", juce::Colours::grey, stems);
+            quiet.setSourceAudio (silence, 0, silence->getLength());
+            quiet.advance (0.5);
+            CHECK (*std::max_element (quiet.getRingLevels().begin(), quiet.getRingLevels().end()) < 0.01f,
+                   "con silencio el anillo queda como un círculo liso");
         }
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
