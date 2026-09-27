@@ -35,6 +35,7 @@ juce_add_gui_app(StemLab
 target_sources(StemLab PRIVATE
     Source/Application/Main.cpp
 
+    Source/Audio/AudioClip.cpp
     Source/Audio/AudioEngine.cpp
     Source/Audio/AudioFileLoader.cpp
     Source/Audio/AudioMixer.cpp
