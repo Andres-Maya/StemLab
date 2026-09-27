@@ -3,6 +3,7 @@
 
 #include "AI/AIProcessManager.h"
 #include "AI/DemucsSeparator.h"
+#include "Application/FileAssociation.h"
 #include "Audio/AudioEngine.h"
 #include "Project/ProjectManager.h"
 #include "Project/Project.h"
@@ -69,6 +70,10 @@ public:
 
         if (const auto file = projectFileFromCommandLine (commandLine); file != juce::File())
             mainWindow->openProjectFile (file);
+
+        // Los .stemlab con el icono de StemLab y doble clic para abrirlos
+        // (solo escribe en el registro del usuario si no estaba ya así).
+        FileAssociation::registerProjectFiles (juce::File::getSpecialLocation (juce::File::currentExecutableFile));
 
         if (audioError.isNotEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Audio",
