@@ -62,12 +62,15 @@ private:
     void saveProject();
     void saveProjectAs (std::function<void()> onSaved = nullptr);
     void importAudio();
+    void exportMix();
     void deleteSelectedTrack();
     void removeTrack (AudioTrack& track);
     /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
     void addTrack (int insertIndex = -1);
 
     // Edición de fragmentos (clips)
+    void undo();
+    void redo();
     void splitAtPlayhead();
     void copySelectedClip();
     void cutSelectedClip();

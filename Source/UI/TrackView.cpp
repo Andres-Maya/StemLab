@@ -75,7 +75,11 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     };
     waveform.onClipClicked = [this] (juce::uint32 clipId) { if (onClipClicked != nullptr) onClipClicked (*this, clipId); };
     waveform.onContextMenu = [this] (juce::uint32 clipId, double seconds) { if (onContextMenu != nullptr) onContextMenu (*this, clipId, seconds); };
-    waveform.onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
+    waveform.onClipsEdited = [this] (std::vector<AudioClip> clipsBefore, const juce::String& actionName)
+    {
+        if (onClipsEdited != nullptr)
+            onClipsEdited (*this, std::move (clipsBefore), actionName);
+    };
     waveform.onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
     {
         return onWheel != nullptr && onWheel (x, e, w);

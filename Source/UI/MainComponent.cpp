@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "AudioSettingsComponent.h"
+#include "ExportDialog.h"
 #include "StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
 
@@ -37,6 +38,9 @@ namespace
         zoomInId,
         zoomOutId,
         zoomFitId,
+        undoId,
+        redoId,
+        exportMixId,
         modelBaseId = 1000
     };
 
@@ -73,7 +77,7 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     addAndMakeVisible (menuBar);
    #endif
 
-    transportBar.onToStart = [this] { engine.getTransport().setPosition (0); };
+    transportBar.onToStart = [this] { if (! engine.isRecording()) engine.getTransport().setPosition (0); };
     transportBar.onPlayPause = [this] { togglePlayPause(); };
     transportBar.onStop = [this] { stop(); };
     transportBar.onRecord = [this] { toggleRecording(); };
@@ -81,7 +85,11 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
 
     trackList.onSelectionChanged = [this] (std::shared_ptr<AudioTrack> track) { mixer.setTrack (std::move (track)); };
     trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
-    trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
+    trackList.onClipsEdited = [this] (std::shared_ptr<AudioTrack> track, std::vector<AudioClip> clipsBefore,
+                                      const juce::String& actionName)
+    {
+        projects.clipsEdited (track, std::move (clipsBefore), actionName);
+    };
     trackList.onAddTrack = [this] (int insertIndex) { addTrack (insertIndex); };
     trackList.onTracksReordered = [this] { projects.notifyTracksEdited(); };
     trackList.onTrackRenamed = [this] (AudioTrack&) { mixer.repaint(); };
@@ -147,7 +155,10 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     const juce::ModifierKeys commandShift (juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier);
 
     if (key == juce::KeyPress::spaceKey)                    { togglePlayPause(); return true; }
-    if (key == juce::KeyPress::homeKey)                     { engine.getTransport().setPosition (0); return true; }
+    if (key == juce::KeyPress::homeKey)                     { if (! engine.isRecording()) engine.getTransport().setPosition (0); return true; }
+    if (key == juce::KeyPress ('z', command, 0))            { undo(); return true; }
+    if (key == juce::KeyPress ('z', commandShift, 0))       { redo(); return true; }
+    if (key == juce::KeyPress ('y', command, 0))            { redo(); return true; }
     if (key == juce::KeyPress (juce::KeyPress::deleteKey, command, 0)) { deleteSelectedTrack(); return true; }
     if (key == juce::KeyPress::deleteKey)                   { deleteSelectedClip(); return true; }
     if (key == juce::KeyPress ('r'))                        { toggleRecording(); return true; }
@@ -164,6 +175,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress ('s', commandShift, 0))       { saveProjectAs(); return true; }
     if (key == juce::KeyPress ('s', command, 0))            { saveProject(); return true; }
     if (key == juce::KeyPress ('i', command, 0))            { importAudio(); return true; }
+    if (key == juce::KeyPress ('e', command, 0))            { exportMix(); return true; }
 
     return false;
 }
@@ -196,6 +208,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             addItem (menu, saveProjectAsId, "Guardar proyecto como...", "Ctrl+Shift+S");
             menu.addSeparator();
             addItem (menu, importAudioId, "Importar audio...", "Ctrl+I");
+            addItem (menu, exportMixId, "Exportar mezcla (WAV / MP3)...", "Ctrl+E", hasTracks);
             menu.addSeparator();
             addItem (menu, quitId, "Salir");
             break;
@@ -205,6 +218,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             const auto hasTrack = trackList.getSelectedTrack() != nullptr;
             const auto hasClip = trackList.getSelectedClipId() != 0;
 
+            addItem (menu, undoId, projects.canUndo() ? "Deshacer: " + projects.getUndoDescription() : juce::String ("Deshacer"),
+                     "Ctrl+Z", projects.canUndo());
+            addItem (menu, redoId, projects.canRedo() ? "Rehacer: " + projects.getRedoDescription() : juce::String ("Rehacer"),
+                     "Ctrl+Y", projects.canRedo());
             menu.addSectionHeader ("Fragmentos");
             addItem (menu, splitClipId, "Dividir en el cabezal", "S", hasTrack);
             addItem (menu, cutClipId, "Cortar", "Ctrl+X", hasClip);
@@ -287,6 +304,7 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case saveProjectId:         saveProject(); break;
         case saveProjectAsId:       saveProjectAs(); break;
         case importAudioId:         importAudio(); break;
+        case exportMixId:           exportMix(); break;
         case quitId:                requestQuit(); break;
         case deleteTrackId:         deleteSelectedTrack(); break;
         case showFolderId:          showProjectFolder(); break;
@@ -309,6 +327,8 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case zoomInId:              trackList.zoomIn(); break;
         case zoomOutId:             trackList.zoomOut(); break;
         case zoomFitId:             trackList.zoomToFit(); break;
+        case undoId:                undo(); break;
+        case redoId:                redo(); break;
         default:                    break;
     }
 }
@@ -463,6 +483,56 @@ void MainComponent::importAudio()
     });
 }
 
+void MainComponent::exportMix()
+{
+    // La grabación en curso y el audio que se está cargando aún no son clips:
+    // no saldrían en el archivo.
+    if (! ensureIdle ("exportar la mezcla"))
+        return;
+
+    if (engine.getMixer().getContentLength() <= 0)
+    {
+        showError ("Exportar mezcla", "No hay nada que exportar: importa o graba audio primero."_u8);
+        return;
+    }
+
+    // Un proyecto guardado exporta a su carpeta exports/; una sesión sin
+    // guardar, a Documentos/StemLab (la carpeta temporal se borra sola).
+    const auto& project = projects.getProject();
+    const auto folder = project.isTemporary() ? defaultProjectsFolder() : project.getExportsDirectory();
+    const auto name = project.isTemporary() ? juce::String ("Mezcla") : project.getName();
+
+    ExportDialog::show (this, engine, fileChooser, folder, name,
+                        [safe = juce::Component::SafePointer<MainComponent> (this)] (const ExportResult& result, const juce::File& file)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result.cancelled)
+        {
+            safe->statusBar.setMessage ("Exportación cancelada."_u8);
+            return;
+        }
+
+        if (result.status.failed())
+        {
+            safe->showError ("Exportar mezcla", result.status.getErrorMessage());
+            return;
+        }
+
+        // Por encima de 0 dBFS, WAV entero y MP3 recortan: se avisa (el WAV de
+        // 32 bits coma flotante lo conserva).
+        if (result.clipped)
+            safe->showError ("Mezcla exportada con recorte",
+                             "La mezcla llega a +"_u8 + juce::String (juce::Decibels::gainToDecibels (result.peak), 1)
+                             + " dBFS y se ha recortado al guardarla.\n\n"
+                             + "Baja el volumen master o de las pistas (o activa el Limiter) y vuelve a exportar.\n\n"
+                             + file.getFullPathName());
+
+        safe->statusBar.setMessage ("Mezcla exportada (" + formatTime (result.seconds) + "): " + file.getFullPathName());
+    });
+}
+
 void MainComponent::deleteSelectedTrack()
 {
     if (const auto track = trackList.getSelectedTrack())
@@ -488,7 +558,8 @@ void MainComponent::removeTrack (AudioTrack& track)
             weakTrack = t;
 
     const auto message = "¿Estás seguro de que quieres eliminar esta pista?\n\n\""_u8 + track.getName() + "\"\n\n"
-                       + "Sus fragmentos se quitarán del proyecto; los archivos de audio se conservan en disco."_u8;
+                       + "Sus fragmentos se quitarán del proyecto; los archivos de audio se conservan en disco. "_u8
+                       + "Puedes recuperarla con Editar > Deshacer (Ctrl+Z)."_u8;
 
     juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Eliminar pista", message,
                                         "Eliminar", "Cancelar", this,
@@ -501,7 +572,7 @@ void MainComponent::removeTrack (AudioTrack& track)
                                                 return;
 
                                             safe->projects.removeTrack (*target);
-                                            safe->statusBar.setMessage ("Pista \"" + target->getName() + "\" eliminada.");
+                                            safe->statusBar.setMessage ("Pista \"" + target->getName() + "\" eliminada. Ctrl+Z la recupera.");
                                         }));
 }
 
@@ -543,6 +614,40 @@ namespace
     }
 }
 
+void MainComponent::undo()
+{
+    // Durante una grabación, la pista en la que se graba recibirá la toma al
+    // terminar: se deshace después, para no mezclar las dos cosas.
+    if (engine.isRecording())
+    {
+        statusBar.setMessage ("Termina la grabación antes de deshacer."_u8);
+        return;
+    }
+
+    const auto description = projects.getUndoDescription();
+
+    if (projects.undo())
+        statusBar.setMessage ("Deshecho: " + description);
+    else
+        statusBar.setMessage ("No hay nada que deshacer.");
+}
+
+void MainComponent::redo()
+{
+    if (engine.isRecording())
+    {
+        statusBar.setMessage ("Termina la grabación antes de rehacer."_u8);
+        return;
+    }
+
+    const auto description = projects.getRedoDescription();
+
+    if (projects.redo())
+        statusBar.setMessage ("Rehecho: " + description);
+    else
+        statusBar.setMessage ("No hay nada que rehacer.");
+}
+
 void MainComponent::splitAtPlayhead()
 {
     const auto track = trackList.getSelectedTrack();
@@ -571,9 +676,8 @@ void MainComponent::splitAtPlayhead()
         return;
     }
 
-    track->setClips (std::move (clips));
+    projects.editClips (track, std::move (clips), "Dividir fragmento");
     trackList.selectClip (track, rightHalf);
-    projects.notifyTracksEdited();
     statusBar.setMessage ("Fragmento dividido en el cabezal.");
 }
 
@@ -606,9 +710,8 @@ void MainComponent::cutSelectedClip()
     {
         clipboard = *clip;
         ClipEditing::remove (clips, clip->id);
-        track->setClips (std::move (clips));
+        projects.editClips (track, std::move (clips), "Cortar fragmento");
         trackList.selectClip (track, 0);
-        projects.notifyTracksEdited();
         statusBar.setMessage ("Fragmento cortado. Ctrl+V lo pega en el cabezal.");
     }
 }
@@ -631,9 +734,10 @@ void MainComponent::pasteClip (std::shared_ptr<AudioTrack> track, juce::int64 po
     clip.id = AudioClip::createId();
     clip.timelineStart = juce::jmax<juce::int64> (0, position);
 
-    track->addClip (clip);
+    auto clips = track->getClips();
+    clips.push_back (clip);
+    projects.editClips (track, std::move (clips), "Pegar fragmento");
     trackList.selectClip (track, clip.id);
-    projects.notifyTracksEdited();
     statusBar.setMessage ("Fragmento pegado.");
 }
 
@@ -652,10 +756,9 @@ void MainComponent::deleteSelectedClip()
 
     if (ClipEditing::remove (clips, clipId))
     {
-        track->setClips (std::move (clips));
+        projects.editClips (track, std::move (clips), "Eliminar fragmento");
         trackList.selectClip (track, 0);
-        projects.notifyTracksEdited();
-        statusBar.setMessage ("Fragmento eliminado.");
+        statusBar.setMessage ("Fragmento eliminado. Ctrl+Z lo recupera.");
     }
 }
 

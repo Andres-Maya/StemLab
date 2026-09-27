@@ -248,7 +248,9 @@ void WaveformView::mouseDown (const juce::MouseEvent& event)
     {
         dragMode = hit.mode;
         dragOriginal = *clip;
+        clipsBeforeDrag = track.getClips();
         dragStartX = event.x;
+        clickSeconds = secondsForX (event.x);
     }
 }
 
@@ -299,10 +301,26 @@ void WaveformView::mouseDrag (const juce::MouseEvent& event)
 
 void WaveformView::mouseUp (const juce::MouseEvent&)
 {
-    if (dragChanged && onClipsEdited != nullptr)
-        onClipsEdited();
-
+    const auto mode = dragMode;
+    const auto changed = dragChanged;
     dragMode = DragMode::none;
     dragChanged = false;
+
+    if (mode == DragMode::none || mode == DragMode::seek)
+        return;
+
+    if (changed)
+    {
+        if (onClipsEdited != nullptr)
+            onClipsEdited (std::move (clipsBeforeDrag), mode == DragMode::move ? "Mover fragmento" : "Recortar fragmento");
+    }
+    else if (onSeek != nullptr)
+    {
+        // Clic sin arrastrar sobre un clip: además de seleccionarlo, el cabezal
+        // va ahí. Así se puede colocar una grabación encima de audio ya grabado.
+        onSeek (clickSeconds);
+    }
+
+    clipsBeforeDrag.clear();
 }
 }

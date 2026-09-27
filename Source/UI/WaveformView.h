@@ -13,7 +13,8 @@ namespace stemlab
     Carril de una pista: dibuja sus clips sobre la línea de tiempo compartida y
     permite editarlos con el ratón.
 
-      - Clic en un clip: lo selecciona.       Clic en zona vacía: mueve el cabezal.
+      - Clic: mueve el cabezal ahí (también sobre un clip, que además queda
+        seleccionado). Así se puede grabar encima de lo que ya hay en la pista.
       - Arrastrar el centro: desplaza el clip.
       - Arrastrar un borde: recorta (reduce) el clip por ese lado.
       - Clic derecho: menú de edición.
@@ -39,7 +40,9 @@ public:
     std::function<void (double seconds)> onSeek;
     std::function<void (juce::uint32 clipId)> onClipClicked;                   // 0 = zona vacía
     std::function<void (juce::uint32 clipId, double seconds)> onContextMenu;   // 0 = zona vacía
-    std::function<void()> onClipsEdited;                                       // al soltar tras mover o recortar
+    /** Al soltar tras mover o recortar: la lista de clips de antes de empezar
+        y el nombre de la edición (para deshacerla). */
+    std::function<void (std::vector<AudioClip> clipsBefore, const juce::String& actionName)> onClipsEdited;
 
     /** Rueda del ratón (zoom con Ctrl, desplazamiento con Shift). Devuelve true si la usó;
         si no, la rueda desplaza la lista de pistas en vertical. */
@@ -82,7 +85,9 @@ private:
 
     DragMode dragMode = DragMode::none;
     AudioClip dragOriginal;
+    std::vector<AudioClip> clipsBeforeDrag;
     int dragStartX = 0;
+    double clickSeconds = 0.0;
     bool dragChanged = false;
 };
 }

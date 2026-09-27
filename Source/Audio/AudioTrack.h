@@ -51,7 +51,6 @@ public:
     // anteriores donde se solapan.
     std::vector<AudioClip> getClips() const;
     void setClips (std::vector<AudioClip> newClips);
-    void addClip (AudioClip clip);
     bool hasClips() const;
 
     /** Archivos de audio distintos que usan los clips. */
