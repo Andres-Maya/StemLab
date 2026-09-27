@@ -2,6 +2,7 @@
 
 #include "Utils/Strings.h"
 
+#include <cmath>
 #include <iterator>
 
 namespace stemlab
@@ -9,6 +10,9 @@ namespace stemlab
 namespace
 {
     constexpr int rulerHeight = 24;
+    constexpr int scrollBarHeight = 12;
+    constexpr double minimumVisibleSeconds = 0.25;     // zoom máximo: 0,25 s a lo ancho
+    constexpr double zoomStep = 1.5;
 }
 
 void TrackListView::Content::paint (juce::Graphics& g)
@@ -21,55 +25,48 @@ void TrackListView::Content::paint (juce::Graphics& g)
         g.setFont (juce::FontOptions (16.0f));
         g.drawFittedText ("Pulsa + para añadir una pista, arrastra aquí una canción o usa Archivo > Importar audio...\n"
                           "Después, IA > Separar instrumentos. Para grabar, pulsa R."_u8,
-                          getLocalBounds().withTrimmedTop (AddTrackRow::height).reduced (20),
+                          getLocalBounds().withTrimmedTop (EmptyAddButton::height).reduced (20),
                           juce::Justification::centred, 3);
     }
 }
 
-void TrackListView::AddTrackRow::paint (juce::Graphics& g)
+//==============================================================================
+bool TrackListView::EmptyAddButton::hitTest (int x, int y)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const auto centreY = bounds.getCentreY();
-    constexpr float radius = 11.0f;
-    const auto centreX = 16.0f + radius;
-    const auto lit = highlighted || hovered;
-
-    // Línea desde el círculo hasta el final; encendida (con halo) si no hay
-    // pistas o al pasar el ratón.
-    const auto lineStart = centreX + radius + 6.0f;
-    const auto lineWidth = bounds.getRight() - lineStart - 8.0f;
-
-    if (lit)
-    {
-        for (int i = 3; i >= 1; --i)
-        {
-            g.setColour (Palette::accent.withAlpha (0.07f * static_cast<float> (4 - i)));
-            g.fillRoundedRectangle (lineStart, centreY - 1.0f - static_cast<float> (i) * 2.0f,
-                                    lineWidth, 2.0f + static_cast<float> (i) * 4.0f, 3.0f);
-        }
-
-        g.setColour (Palette::accent.withAlpha (0.35f));
-        g.drawEllipse (centreX - radius - 3.0f, centreY - radius - 3.0f, (radius + 3.0f) * 2.0f, (radius + 3.0f) * 2.0f, 2.0f);
-    }
-
-    g.setColour (lit ? Palette::accent : Palette::outline);
-    g.fillRect (lineStart, centreY - (lit ? 1.0f : 0.5f), lineWidth, lit ? 2.0f : 1.0f);
-
-    // Círculo con el "+".
-    g.setColour (lit ? Palette::accent : Palette::panelLight);
-    g.fillEllipse (centreX - radius, centreY - radius, radius * 2.0f, radius * 2.0f);
-
-    g.setColour (lit ? Palette::background : Palette::text);
-    g.fillRoundedRectangle (centreX - 5.5f, centreY - 1.0f, 11.0f, 2.0f, 1.0f);
-    g.fillRoundedRectangle (centreX - 1.0f, centreY - 5.5f, 2.0f, 11.0f, 1.0f);
+    constexpr float radius = 9.0f;
+    const juce::Point<float> centre (6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius);
+    return centre.getDistanceFrom ({ static_cast<float> (x), static_cast<float> (y) }) <= radius + 3.0f;
 }
 
-void TrackListView::AddTrackRow::mouseUp (const juce::MouseEvent& event)
+void TrackListView::EmptyAddButton::paint (juce::Graphics& g)
 {
-    if (getLocalBounds().contains (event.getPosition()) && onClick != nullptr)
+    // Mismo estilo que el "+" de cada pista, algo más claro: sin pistas es la
+    // única forma de empezar. La línea queda en la zona de cabeceras.
+    constexpr float radius = 9.0f;
+    const juce::Point<float> centre (6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius);
+    const auto lineY = static_cast<float> (getHeight()) - 2.0f;
+    const auto lineColour = Palette::accent.withAlpha (hovered ? 1.0f : 0.8f);
+
+    g.setColour (lineColour);
+    g.fillRect (centre.x, lineY, static_cast<float> (getWidth()) - centre.x, 2.0f);
+
+    g.setColour (Palette::panel.interpolatedWith (Palette::accent, hovered ? 0.4f : 0.2f));
+    g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
+    g.setColour (lineColour);
+    g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.5f);
+
+    g.setColour (Palette::text);
+    g.fillRoundedRectangle (centre.x - 4.5f, centre.y - 0.75f, 9.0f, 1.5f, 0.75f);
+    g.fillRoundedRectangle (centre.x - 0.75f, centre.y - 4.5f, 1.5f, 9.0f, 0.75f);
+}
+
+void TrackListView::EmptyAddButton::mouseUp (const juce::MouseEvent& event)
+{
+    if (hitTest (event.x, event.y) && onClick != nullptr)
         onClick();
 }
 
+//==============================================================================
 void TrackListView::RecordingLane::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds();
@@ -80,15 +77,19 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     // Cada pico cubre previewBinSize muestras; se agrupan por columna de píxeles.
     // Si el clip empieza antes del 0, lo que queda a la izquierda no se dibuja
     // (igual que el clip final, que recorta ese trozo).
-    const auto pixelsPerSample = bounds.getWidth() / (timelineLength * sampleRate);
+    const auto pixelsPerSample = bounds.getWidth() / (visibleLength * sampleRate);
     const auto binSize = static_cast<double> (AudioRecorder::previewBinSize);
-    const auto startX = static_cast<double> (*startSample) * pixelsPerSample;
+    const auto startX = (static_cast<double> (*startSample) - visibleStart * sampleRate) * pixelsPerSample;
     const auto endX = startX + static_cast<double> (peaks.size()) * binSize * pixelsPerSample;
 
     // Se graba "encima" de lo que hubiera en la pista: se tapa esa zona.
     const auto area = bounds.reduced (0, 3).toFloat();
     const auto region = juce::Rectangle<float>::leftTopRightBottom (juce::jmax (0.0f, (float) startX), area.getY(),
-                                                                    (float) endX, area.getBottom());
+                                                                    juce::jmin ((float) bounds.getRight(), (float) endX),
+                                                                    area.getBottom());
+    if (region.getWidth() <= 0.0f)
+        return;
+
     g.setColour (Palette::background);
     g.fillRect (region);
     g.setColour (Palette::record.withAlpha (0.15f));
@@ -114,7 +115,7 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
 
     for (size_t i = 0; i < peaks.size(); ++i)
     {
-        const auto x = static_cast<int> (startX + static_cast<double> (i) * binSize * pixelsPerSample);
+        const auto x = static_cast<int> (std::floor (startX + static_cast<double> (i) * binSize * pixelsPerSample));
 
         if (x != column)
         {
@@ -142,12 +143,28 @@ void TrackListView::Playhead::paint (juce::Graphics& g)
 TrackListView::TrackListView (AudioEngine& audioEngine)
     : engine (audioEngine)
 {
-    addTrackRow.setTooltip ("Añadir una pista debajo (Ctrl+T)"_u8);
-    addTrackRow.setMouseCursor (juce::MouseCursor::PointingHandCursor);
-    addTrackRow.onClick = [this] { if (onAddTrack != nullptr) onAddTrack(); };
-    content.addAndMakeVisible (addTrackRow);
+    zoomOutButton.setTooltip ("Alejar (Ctrl + rueda del ratón)"_u8);
+    zoomInButton.setTooltip ("Acercar (Ctrl + rueda del ratón; Shift + rueda para desplazarte)"_u8);
+    zoomFitButton.setTooltip ("Ver toda la canción"_u8);
+    zoomOutButton.onClick = [this] { zoomOut(); };
+    zoomInButton.onClick = [this] { zoomIn(); };
+    zoomFitButton.onClick = [this] { zoomToFit(); };
+
+    for (auto* button : { &zoomOutButton, &zoomInButton, &zoomFitButton })
+        addAndMakeVisible (*button);
+
+    horizontalScroll.setAutoHide (false);
+    horizontalScroll.setColour (juce::ScrollBar::thumbColourId, Palette::outline.brighter (0.4f));
+    horizontalScroll.addListener (this);
+    addAndMakeVisible (horizontalScroll);
+
+    emptyAddButton.setTooltip ("Añadir una pista (Ctrl+T)"_u8);
+    emptyAddButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    emptyAddButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack (-1); };
+    content.addAndMakeVisible (emptyAddButton);
 
     ruler.onSeek = [this] (double seconds) { seekTo (seconds); };
+    ruler.onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w) { return handleWheel (x, e, w); };
     addAndMakeVisible (ruler);
 
     content.addChildComponent (recordingLane);
@@ -162,6 +179,7 @@ TrackListView::TrackListView (AudioEngine& audioEngine)
 TrackListView::~TrackListView()
 {
     stopTimer();
+    horizontalScroll.removeListener (this);
 }
 
 void TrackListView::refresh()
@@ -192,12 +210,21 @@ void TrackListView::refresh()
         row->onDelete = [this] (TrackView& view) { if (onDeleteRequested != nullptr) onDeleteRequested (view.getTrack()); };
         row->onClipClicked = [this] (TrackView& view, juce::uint32 clipId) { selectClip (view.getTrackPointer(), clipId); };
         row->onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
+        row->onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w) { return handleWheel (x, e, w); };
         row->onContextMenu = [this] (TrackView& view, juce::uint32 clipId, double seconds)
         {
             if (onContextMenu != nullptr)
                 onContextMenu (view.getTrackPointer(), clipId, seconds);
         };
+        row->onAddBelow = [this] (TrackView& view)
+        {
+            // La pista nueva va justo debajo de la que tiene el "+".
+            for (size_t index = 0; index < rows.size(); ++index)
+                if (rows[index].get() == &view && onAddTrack != nullptr)
+                    onAddTrack (static_cast<int> (index) + 1);
+        };
 
+        row->setVisibleRange (visibleStart, visibleLength);
         content.addAndMakeVisible (*row);
         newRows.push_back (std::move (row));
     }
@@ -205,8 +232,11 @@ void TrackListView::refresh()
     // Las filas de pistas eliminadas se destruyen aquí (y liberan su pista).
     rows = std::move (newRows);
     content.isEmpty = rows.empty();
-    addTrackRow.highlighted = rows.empty();
-    addTrackRow.repaint();
+    emptyAddButton.setVisible (rows.empty());
+
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i]->setIsLast (i + 1 == rows.size());
+
     recordingLane.toFront (false);
     playhead.toFront (false);
 
@@ -230,8 +260,8 @@ void TrackListView::refresh()
 
     updateSelectionDisplay();
     knownContentLength = -1;
-    updateTimeline();
     layoutRows();
+    updateTimeline();
     content.repaint();
 }
 
@@ -270,28 +300,40 @@ void TrackListView::updateSelectionDisplay()
     }
 }
 
+//==============================================================================
 void TrackListView::paint (juce::Graphics& g)
 {
     g.setColour (Palette::panel);
     g.fillRect (getLocalBounds().removeFromTop (rulerHeight).withWidth (TrackView::headerWidth));
+    g.fillRect (getLocalBounds().removeFromBottom (scrollBarHeight));
 }
 
 void TrackListView::resized()
 {
     auto bounds = getLocalBounds();
     auto top = bounds.removeFromTop (rulerHeight);
-    top.removeFromLeft (TrackView::headerWidth);
+    auto bottom = bounds.removeFromBottom (scrollBarHeight);
+
+    // Esquina superior izquierda: controles de zoom.
+    auto zoomArea = top.removeFromLeft (TrackView::headerWidth).reduced (6, 2);
+    zoomFitButton.setBounds (zoomArea.removeFromRight (64));
+    zoomArea.removeFromRight (4);
+    zoomInButton.setBounds (zoomArea.removeFromRight (26));
+    zoomArea.removeFromRight (4);
+    zoomOutButton.setBounds (zoomArea.removeFromRight (26));
 
     ruler.setBounds (top);
     viewport.setBounds (bounds);
+    horizontalScroll.setBounds (bottom.withTrimmedLeft (TrackView::headerWidth));
     layoutRows();
+    setVisibleRange (visibleStart, visibleLength);
 }
 
 void TrackListView::layoutRows()
 {
     const auto width = viewport.getMaximumVisibleWidth();
     const auto height = juce::jmax (viewport.getMaximumVisibleHeight(),
-                                    static_cast<int> (rows.size()) * TrackView::preferredHeight + AddTrackRow::height);
+                                    static_cast<int> (rows.size()) * TrackView::preferredHeight);
 
     content.setSize (width, height);
 
@@ -303,8 +345,8 @@ void TrackListView::layoutRows()
         y += TrackView::preferredHeight;
     }
 
-    // El "+" va justo debajo de la última pista (arriba del todo si no hay).
-    addTrackRow.setBounds (0, y, width, AddTrackRow::height);
+    // Sin pistas, el "+" va arriba del todo, en la zona de cabeceras.
+    emptyAddButton.setBounds (0, 0, TrackView::headerWidth, EmptyAddButton::height);
 
     playhead.setBounds (TrackView::headerWidth, 0, juce::jmax (0, width - TrackView::headerWidth), height);
 
@@ -312,29 +354,128 @@ void TrackListView::layoutRows()
     ruler.setBounds (ruler.getBounds().withWidth (playhead.getWidth()));
 }
 
+int TrackListView::waveformWidth() const
+{
+    return juce::jmax (1, viewport.getMaximumVisibleWidth() - TrackView::headerWidth);
+}
+
+//==============================================================================
 void TrackListView::updateTimeline()
 {
     const auto sampleRate = engine.getSampleRate();
     const auto contentSeconds = static_cast<double> (engine.getMixer().getContentLength()) / sampleRate;
 
     // Un poco de margen a la derecha para poder grabar después del final.
-    setTimelineLength (juce::jmax (30.0, contentSeconds * 1.05));
+    totalLength = juce::jmax (30.0, contentSeconds * 1.05);
+
+    if (fitToWindow)
+    {
+        setVisibleRange (0.0, totalLength);
+    }
+    else
+    {
+        totalLength = juce::jmax (totalLength, visibleStart + visibleLength);
+        setVisibleRange (visibleStart, visibleLength);
+    }
 }
 
-void TrackListView::setTimelineLength (double seconds)
+void TrackListView::setVisibleRange (double start, double length)
 {
-    timelineLength = seconds;
-    ruler.setTimelineLength (seconds);
-    recordingLane.timelineLength = seconds;
+    length = juce::jlimit (minimumVisibleSeconds, juce::jmax (minimumVisibleSeconds, totalLength), length);
+    start = juce::jlimit (0.0, juce::jmax (0.0, totalLength - length), start);
+
+    visibleStart = start;
+    visibleLength = length;
+
+    ruler.setVisibleRange (start, length);
+    recordingLane.visibleStart = start;
+    recordingLane.visibleLength = length;
     recordingLane.repaint();
 
     for (auto& row : rows)
-        row->setTimelineLength (seconds);
+        row->setVisibleRange (start, length);
+
+    horizontalScroll.setRangeLimits (0.0, totalLength, juce::dontSendNotification);
+    horizontalScroll.setCurrentRange (start, length, juce::dontSendNotification);
+
+    playhead.x = -2;    // fuerza a recolocar el cabezal en el siguiente tic
 }
 
+void TrackListView::scrollBarMoved (juce::ScrollBar*, double newRangeStart)
+{
+    fitToWindow = false;
+    setVisibleRange (newRangeStart, visibleLength);
+}
+
+void TrackListView::zoomAround (double anchorSeconds, double factor)
+{
+    const auto newLength = juce::jlimit (minimumVisibleSeconds, totalLength, visibleLength * factor);
+
+    if (newLength >= totalLength - 1.0e-6)
+    {
+        zoomToFit();
+        return;
+    }
+
+    // El instante bajo el ratón (o el cabezal) se queda en el mismo sitio.
+    const auto newStart = anchorSeconds - (anchorSeconds - visibleStart) * newLength / visibleLength;
+    fitToWindow = false;
+    setVisibleRange (newStart, newLength);
+}
+
+void TrackListView::zoomIn()
+{
+    const auto playheadSeconds = static_cast<double> (engine.getTransport().getPosition()) / engine.getSampleRate();
+    const auto playheadVisible = playheadSeconds >= visibleStart && playheadSeconds <= visibleStart + visibleLength;
+    zoomAround (playheadVisible ? playheadSeconds : visibleStart + visibleLength * 0.5, 1.0 / zoomStep);
+}
+
+void TrackListView::zoomOut()
+{
+    zoomAround (visibleStart + visibleLength * 0.5, zoomStep);
+}
+
+void TrackListView::zoomToFit()
+{
+    fitToWindow = true;
+    updateTimeline();
+}
+
+bool TrackListView::handleWheel (int x, const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    // Ctrl + rueda: zoom alrededor del ratón.
+    if (event.mods.isCommandDown() || event.mods.isCtrlDown())
+    {
+        const auto delta = ! juce::exactlyEqual (wheel.deltaY, 0.0f) ? wheel.deltaY : wheel.deltaX;
+
+        if (! juce::exactlyEqual (delta, 0.0f))
+        {
+            const auto anchor = visibleStart + static_cast<double> (x) / waveformWidth() * visibleLength;
+            zoomAround (anchor, std::pow (2.0, -static_cast<double> (delta) * 2.0));
+        }
+
+        return true;
+    }
+
+    // Shift + rueda, o rueda horizontal del touchpad: desplazamiento lateral.
+    const auto horizontal = event.mods.isShiftDown()
+                          ? (! juce::exactlyEqual (wheel.deltaX, 0.0f) ? wheel.deltaX : wheel.deltaY)
+                          : (std::abs (wheel.deltaX) > std::abs (wheel.deltaY) ? wheel.deltaX : 0.0f);
+
+    if (! juce::exactlyEqual (horizontal, 0.0f))
+    {
+        fitToWindow = false;
+        setVisibleRange (visibleStart - static_cast<double> (horizontal) * visibleLength * 0.5, visibleLength);
+        return true;
+    }
+
+    return false;   // rueda normal: desplazamiento vertical de la lista
+}
+
+//==============================================================================
 void TrackListView::updateRecordingLane()
 {
-    // La vista previa se dibuja sobre la zona de clips de la pista armada.
+    // La vista previa se dibuja sobre la zona de clips de la pista en la que se graba.
     TrackView* targetRow = nullptr;
 
     if (engine.isRecording())
@@ -404,20 +545,33 @@ void TrackListView::timerCallback()
     const auto seconds = static_cast<double> (engine.getTransport().getPosition()) / engine.getSampleRate();
 
     // Grabando más allá del final: la línea de tiempo se alarga por delante del cabezal.
-    if (engine.isRecording() && seconds > timelineLength - 2.0)
-        setTimelineLength (seconds * 1.25);
+    if (engine.isRecording() && seconds > totalLength - 2.0)
+    {
+        totalLength = seconds * 1.25;
+        setVisibleRange (fitToWindow ? 0.0 : visibleStart, fitToWindow ? totalLength : visibleLength);
+    }
+
+    // Con zoom, la vista sigue al cabezal mientras suena.
+    if (engine.getTransport().isPlaying() && ! fitToWindow
+        && (seconds > visibleStart + visibleLength * 0.97 || seconds < visibleStart))
+        setVisibleRange (seconds - visibleLength * 0.05, visibleLength);
 
     ruler.setPlayheadSeconds (seconds);
 
-    const auto x = playhead.getWidth() > 0
-                 ? juce::roundToInt (seconds / timelineLength * playhead.getWidth())
+    const auto relative = (seconds - visibleStart) / visibleLength;
+    const auto x = playhead.getWidth() > 0 && relative >= 0.0 && relative <= 1.0
+                 ? juce::roundToInt (relative * playhead.getWidth())
                  : -1;
 
     if (x != playhead.x)
     {
         // Solo se repintan las dos franjas afectadas: las formas de onda están
         // cacheadas como imagen.
-        playhead.repaint (playhead.x - 2, 0, 5, playhead.getHeight());
+        if (playhead.x == -2)
+            playhead.repaint();
+        else
+            playhead.repaint (playhead.x - 2, 0, 5, playhead.getHeight());
+
         playhead.x = x;
         playhead.repaint (x - 2, 0, 5, playhead.getHeight());
     }
