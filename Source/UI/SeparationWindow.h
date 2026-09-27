@@ -13,11 +13,11 @@ namespace stemlab
 /**
     Animación de la separación por IA:
 
-      - En el centro, una esfera del color de la pista que se separa. Gira y a
-        su alrededor hay un anillo de frecuencias: una línea que forma un
-        círculo y se deforma con picos, con puntos brillantes en los más altos.
-        Dibuja la propia canción: recorre su audio en tiempo real y lo pone en
-        círculo (sin audio usa una señal sintética).
+      - En el centro, el porcentaje de la separación. Lo rodea un anillo de
+        frecuencias del color de la pista que se separa: una línea que forma
+        un círculo y se deforma con picos, con puntos brillantes en los más
+        altos. Dibuja la propia canción: recorre su audio en tiempo real y lo
+        pone en círculo (sin audio usa una señal sintética).
       - Cada cierto porcentaje sale de ella otra esfera, del color de una de
         las pistas que se van a generar (Voz, Batería...). Se coloca alrededor
         y cada una tiene su propia animación (ondas, órbita, arcos, oscilador,
@@ -65,13 +65,12 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void visibilityChanged() override;
 
 private:
     void timerCallback() override;
     void updateRing (double seconds);
 
-    void drawMainOrb (juce::Graphics&, juce::Point<float> centre, float radius) const;
+    void drawCentre (juce::Graphics&, juce::Point<float> centre, float radius) const;
     void drawFrequencyRing (juce::Graphics&, juce::Point<float> centre, float radius) const;
     void drawStemOrb (juce::Graphics&, int index, juce::Point<float> centre, float radius, float alpha) const;
     void drawBeam (juce::Graphics&, juce::Point<float> from, juce::Point<float> to, juce::Colour, float alpha, int index) const;
