@@ -5,6 +5,7 @@
 #include "AI/AIProcessManager.h"
 #include "Audio/AudioEngine.h"
 #include "MixerView.h"
+#include "SeparationWindow.h"
 #include "Project/ProjectManager.h"
 #include "StatusBar.h"
 #include "TrackListView.h"
@@ -110,6 +111,7 @@ private:
     void finishRecording();
     void separateInstruments();
     void separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source);
+    void showSeparationWindow();
     void showAbout();
 
     bool ensureIdle (const juce::String& action);
@@ -139,6 +141,8 @@ private:
 
     juce::PropertiesFile* settings = nullptr;
     juce::RecentlyOpenedFilesList recentProjects;
+
+    std::unique_ptr<SeparationWindow> separationWindow;   // animación mientras la IA separa
 
     std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
     std::shared_ptr<AudioTrack> trackClipboard;     // copia de la pista copiada o cortada

@@ -25,6 +25,7 @@ namespace
         audioSettingsId,
         separateId,
         cancelSeparationId,
+        showSeparationId,
         aboutId,
         splitClipId,
         cutClipId,
@@ -127,6 +128,7 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     addAndMakeVisible (mixer);
 
     statusBar.onCancel = [this] { ai.cancel(); };
+    statusBar.onShowSeparation = [this] { showSeparationWindow(); };
     addAndMakeVisible (statusBar);
 
     projects.addChangeListener (this);
@@ -298,6 +300,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
         case 4:
         {
             addItem (menu, separateId, "Separar instrumentos", {}, hasTracks && ! aiBusy);
+            addItem (menu, showSeparationId, "Mostrar progreso de la separación"_u8, {}, aiBusy && separationWindow != nullptr);
             addItem (menu, cancelSeparationId, "Cancelar separación"_u8, {}, aiBusy);
             menu.addSeparator();
             menu.addSectionHeader ("Modelo");
@@ -361,6 +364,7 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case audioSettingsId:       showAudioSettings(); break;
         case separateId:            separateInstruments(); break;
         case cancelSeparationId:    ai.cancel(); break;
+        case showSeparationId:      showSeparationWindow(); break;
         case aboutId:               showAbout(); break;
         case splitClipId:           splitAtPlayhead(); break;
         case cutClipId:             cutSelectedClip(); break;
@@ -1121,12 +1125,60 @@ void MainComponent::separateInstruments()
             safe->separationFinished (result, weakSource.lock());
     });
 
-    if (started)
-        statusBar.setMessage ("Separando \"" + source->getName() + "\" con " + ai.getSeparator().getName() + "...");
+    if (! started)
+        return;
+
+    statusBar.setMessage ("Separando \"" + source->getName() + "\" con " + ai.getSeparator().getName() + "...");
+
+    // Ventana con la animación: la esfera del color de la pista original y,
+    // según avanza, una esfera por cada pista que se va a generar.
+    const auto& tracks = engine.getMixer().getTracks();
+    const auto index = static_cast<int> (std::distance (tracks.begin(), std::find (tracks.begin(), tracks.end(), source)));
+    std::vector<SeparationView::Stem> stems;
+    const auto expected = ai.getSeparator().getExpectedStems();
+
+    for (int i = 0; i < expected.size(); ++i)
+    {
+        const auto name = stemDisplayName (expected[i]);
+        stems.push_back ({ name, trackColourFor (name, static_cast<int> (tracks.size()) + i) });
+    }
+
+    separationWindow = std::make_unique<SeparationWindow> (source->getName(), trackColourFor (source->getName(), index), std::move (stems));
+    auto& view = separationWindow->getView();
+    view.getProgress = [this] { return ai.getProgress(); };
+    view.getStatus = [this] { return ai.getStatus(); };
+    view.onCancel = [this] { ai.cancel(); };
+    separationWindow->present();
+}
+
+void MainComponent::showSeparationWindow()
+{
+    if (separationWindow != nullptr)
+        separationWindow->present();
 }
 
 void MainComponent::separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source)
 {
+    // Bien: la ventana muestra todas las pistas y "completada" un momento y
+    // se cierra sola. Cancelada o con error: se cierra ya.
+    if (separationWindow != nullptr)
+    {
+        if (result.status.wasOk() && ! result.cancelled)
+        {
+            separationWindow->getView().setFinished (true);
+            juce::Timer::callAfterDelay (1800, [safe = juce::Component::SafePointer<MainComponent> (this),
+                                                window = separationWindow.get()]
+            {
+                if (safe != nullptr && safe->separationWindow.get() == window)
+                    safe->separationWindow.reset();
+            });
+        }
+        else
+        {
+            separationWindow.reset();
+        }
+    }
+
     if (result.cancelled)
     {
         statusBar.setMessage ("Separación cancelada."_u8);
