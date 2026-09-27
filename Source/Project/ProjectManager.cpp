@@ -4,6 +4,7 @@
 #include "Utils/Strings.h"
 
 #include <cmath>
+#include <map>
 
 namespace stemlab
 {
@@ -72,13 +73,8 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
     project = std::move (loaded);
     project.createFolderStructure();
 
-    std::vector<LoadRequest> requests;
-
-    for (const auto& track : document.tracks)
-        requests.push_back ({ track.name, track.file, track.startSeconds, track.state, false });
-
     sendChangeMessage();
-    loadTracks (std::move (requests), std::move (onDone));
+    loadTracks (requestsFrom (document), std::move (onDone));
 }
 
 juce::Result ProjectManager::save()
@@ -118,10 +114,11 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
                 return juce::Result::fail ("No se pudo copiar la carpeta " + subfolder);
         }
 
-        // Las pistas apuntan ahora a las copias.
+        // Los clips apuntan ahora a las copias.
         for (const auto& track : engine.getMixer().getTracks())
-            if (track->getSourceFile().isAChildOf (oldFolder))
-                track->setSourceFile (newFolder.getChildFile (track->getSourceFile().getRelativePathFrom (oldFolder)));
+            for (const auto& source : track->getSources())
+                if (source->file.isAChildOf (oldFolder))
+                    source->file = newFolder.getChildFile (source->file.getRelativePathFrom (oldFolder));
 
         // La sesión temporal ya está copiada: se elimina para no llenar el disco.
         if (project.isTemporary())
@@ -159,15 +156,54 @@ void ProjectManager::importAudio (const juce::Array<juce::File>& files, Callback
 
 void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone)
 {
-    std::vector<LoadRequest> requests;
+    std::vector<TrackRequest> requests;
 
     for (const auto& track : tracks)
-        requests.push_back ({ track.name, track.file, track.startSeconds, {}, track.copyIntoProject });
+    {
+        TrackRequest request;
+        request.name = track.name;
+        request.copyIntoProject = track.copyIntoProject;
+        request.clips.push_back ({ track.file, track.startSeconds, 0.0, -1.0 });
+        requests.push_back (std::move (request));
+    }
 
     loadTracks (std::move (requests), std::move (onDone));
 }
 
-void ProjectManager::addRecording (const RecordingInfo& recording, Callback onDone)
+std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName)
+{
+    auto track = std::make_shared<AudioTrack> (createTrackName (baseName));
+    engine.getMixer().addTrack (track);
+    sendChangeMessage();
+    return track;
+}
+
+void ProjectManager::removeTrack (const AudioTrack& track)
+{
+    // El shared_ptr devuelto se libera aquí, en el hilo de mensajes. Los
+    // archivos de audio se conservan en disco.
+    engine.getMixer().removeTrack (&track);
+    sendChangeMessage();
+}
+
+std::shared_ptr<AudioTrack> ProjectManager::getArmedTrack() const
+{
+    for (const auto& track : engine.getMixer().getTracks())
+        if (track->isArmed())
+            return track;
+
+    return nullptr;
+}
+
+void ProjectManager::setArmedTrack (const std::shared_ptr<AudioTrack>& armedTrack)
+{
+    for (const auto& track : engine.getMixer().getTracks())
+        track->setArmed (track == armedTrack);
+
+    sendChangeMessage();
+}
+
+void ProjectManager::addRecording (const RecordingInfo& recording, std::weak_ptr<AudioTrack> target, Callback onDone)
 {
     if (recording.timelineStart < 0 || recording.sampleRate <= 0.0)
     {
@@ -184,23 +220,36 @@ void ProjectManager::addRecording (const RecordingInfo& recording, Callback onDo
     const auto startSeconds = static_cast<double> (recording.timelineStart - recording.latencySamples)
                             / recording.sampleRate;
 
-    int number = 1;
+    TrackRequest request;
+    request.name = createTrackName ("Grabación"_u8);
+    request.target = std::move (target);
+    request.armed = true;
+    request.clips.push_back ({ recording.file, startSeconds, 0.0, -1.0 });
 
-    for (const auto& track : engine.getMixer().getTracks())
-        if (track->getSourceFile().isAChildOf (project.getRecordingsDirectory()))
-            ++number;
-
-    std::vector<NewTrack> tracks;
-    tracks.push_back ({ "Grabación "_u8 + juce::String (number), recording.file, startSeconds, false });
-    addTracks (std::move (tracks), std::move (onDone));
+    std::vector<TrackRequest> requests;
+    requests.push_back (std::move (request));
+    loadTracks (std::move (requests), std::move (onDone));
 }
 
-void ProjectManager::removeTrack (const AudioTrack& track)
+void ProjectManager::notifyTracksEdited()
 {
-    // El shared_ptr devuelto se libera aquí, en el hilo de mensajes. El archivo
-    // de audio se conserva en disco.
-    engine.getMixer().removeTrack (&track);
+    engine.getMixer().updateContentLength();
     sendChangeMessage();
+}
+
+juce::String ProjectManager::createTrackName (const juce::String& baseName) const
+{
+    const auto& tracks = engine.getMixer().getTracks();
+
+    for (int number = 1;; ++number)
+    {
+        const auto candidate = baseName + " " + juce::String (number);
+        const auto taken = std::any_of (tracks.begin(), tracks.end(),
+                                        [&] (const auto& t) { return t->getName() == candidate; });
+
+        if (! taken)
+            return candidate;
+    }
 }
 
 juce::File ProjectManager::createRecordingFile() const
@@ -219,7 +268,7 @@ juce::File ProjectManager::createStemsFolderFor (const AudioTrack& track) const
 }
 
 //==============================================================================
-void ProjectManager::loadTracks (std::vector<LoadRequest> requests, Callback onDone)
+void ProjectManager::loadTracks (std::vector<TrackRequest> requests, Callback onDone)
 {
     if (requests.empty())
     {
@@ -241,71 +290,59 @@ void ProjectManager::loadTracks (std::vector<LoadRequest> requests, Callback onD
     loaderPool.addJob ([weakThis, requests = std::move (requests), targetRate, audioFolder,
                         loadGeneration, formats, onDone = std::move (onDone)]
     {
-        auto decoded = std::make_shared<std::vector<DecodedTrack>>();
+        // Cada archivo se decodifica una sola vez aunque lo usen varios clips.
+        auto sources = std::make_shared<SourceMap>();
         juce::StringArray errors;
 
         for (const auto& request : requests)
         {
-            auto file = request.file;
-
-            if (request.copyIntoProject && ! file.isAChildOf (audioFolder))
+            for (const auto& clip : request.clips)
             {
-                const auto copy = audioFolder.getChildFile (file.getFileName()).getNonexistentSibling();
+                const auto key = clip.file.getFullPathName();
 
-                if (audioFolder.createDirectory().failed() || ! file.copyFileTo (copy))
+                if (sources->count (key) > 0)
+                    continue;
+
+                auto file = clip.file;
+
+                if (request.copyIntoProject && ! file.isAChildOf (audioFolder))
                 {
-                    errors.add (file.getFileName() + ": no se pudo copiar al proyecto.");
+                    const auto copy = audioFolder.getChildFile (file.getFileName()).getNonexistentSibling();
+
+                    if (audioFolder.createDirectory().failed() || ! file.copyFileTo (copy))
+                    {
+                        errors.add (file.getFileName() + ": no se pudo copiar al proyecto.");
+                        continue;
+                    }
+
+                    file = copy;
+                }
+
+                auto source = std::make_shared<ClipSource>();
+                source->file = file;
+                source->sampleRate = targetRate;
+
+                if (const auto result = AudioFileLoader::load (*formats, file, targetRate, source->audio); result.failed())
+                {
+                    errors.add (file.getFileName() + ": " + result.getErrorMessage());
                     continue;
                 }
 
-                file = copy;
+                (*sources)[key] = std::move (source);
             }
-
-            DecodedTrack track;
-            track.request = request;
-            track.file = file;
-
-            if (const auto result = AudioFileLoader::load (*formats, file, targetRate, track.audio); result.failed())
-            {
-                errors.add (file.getFileName() + ": " + result.getErrorMessage());
-                continue;
-            }
-
-            // Una grabación con compensación de latencia puede empezar antes
-            // del 0: se recorta su principio en vez de mover la pista.
-            track.startSample = static_cast<juce::int64> (std::llround (request.startSeconds * targetRate));
-
-            if (track.startSample < 0)
-            {
-                const auto trim = static_cast<int> (juce::jmin<juce::int64> (-track.startSample, track.audio.getNumSamples()));
-                juce::AudioBuffer<float> trimmed (2, track.audio.getNumSamples() - trim);
-
-                for (int ch = 0; ch < 2; ++ch)
-                    trimmed.copyFrom (ch, 0, track.audio, ch, trim, trimmed.getNumSamples());
-
-                track.audio = std::move (trimmed);
-                track.startSample = 0;
-            }
-
-            if (track.audio.getNumSamples() == 0)
-            {
-                errors.add (file.getFileName() + ": no contiene audio.");
-                continue;
-            }
-
-            decoded->push_back (std::move (track));
         }
 
-        juce::MessageManager::callAsync ([weakThis, decoded, errors, targetRate, loadGeneration, onDone]
+        juce::MessageManager::callAsync ([weakThis, requests, sources, errors, targetRate, loadGeneration, onDone]
         {
             if (auto* self = weakThis.get())
-                self->finishLoading (*decoded, errors, targetRate, loadGeneration, onDone);
+                self->finishLoading (requests, *sources, errors, targetRate, loadGeneration, onDone);
         });
     });
 }
 
-void ProjectManager::finishLoading (std::vector<DecodedTrack>& decoded, const juce::StringArray& errors,
-                                    double decodedSampleRate, int loadGeneration, const Callback& onDone)
+void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, const SourceMap& sources,
+                                    const juce::StringArray& errors, double decodedSampleRate,
+                                    int loadGeneration, const Callback& onDone)
 {
     pendingLoads = juce::jmax (0, pendingLoads - 1);
 
@@ -316,21 +353,77 @@ void ProjectManager::finishLoading (std::vector<DecodedTrack>& decoded, const ju
         return;
     }
 
-    for (auto& item : decoded)
+    auto& mixer = engine.getMixer();
+
+    for (const auto& request : requests)
     {
-        auto track = std::make_shared<AudioTrack> (item.request.name, item.file, std::move (item.audio), decodedSampleRate);
-        track->setStartSample (item.startSample);
+        std::vector<AudioClip> clips;
 
-        if (! item.request.state.isVoid())
-            track->applyState (item.request.state);
+        for (const auto& clipRequest : request.clips)
+        {
+            const auto found = sources.find (clipRequest.file.getFullPathName());
 
-        engine.getMixer().addTrack (std::move (track));
+            if (found == sources.end())
+                continue;
+
+            const auto& source = found->second;
+            const auto sourceLength = source->getLength();
+
+            auto start = static_cast<juce::int64> (std::llround (clipRequest.startSeconds * decodedSampleRate));
+            auto offset = juce::jlimit<juce::int64> (0, sourceLength, std::llround (clipRequest.offsetSeconds * decodedSampleRate));
+            auto length = clipRequest.lengthSeconds < 0.0 ? sourceLength - offset
+                                                          : static_cast<juce::int64> (std::llround (clipRequest.lengthSeconds * decodedSampleRate));
+            length = juce::jmin (length, sourceLength - offset);
+
+            // Un clip que empezaría antes del 0 (grabación con compensación de
+            // latencia) se recorta por el principio.
+            if (start < 0)
+            {
+                offset -= start;
+                length += start;
+                start = 0;
+            }
+
+            if (length < ClipEditing::minimumLength)
+                continue;
+
+            clips.push_back ({ AudioClip::createId(), source, start, offset, length });
+        }
+
+        // ¿Añadir a una pista existente (grabación sobre la pista armada)?
+        auto target = request.target.lock();
+        const auto& tracks = mixer.getTracks();
+
+        if (target != nullptr && std::find (tracks.begin(), tracks.end(), target) != tracks.end())
+        {
+            for (auto& clip : clips)
+                target->addClip (std::move (clip));
+
+            continue;
+        }
+
+        if (clips.empty() && ! request.keepIfEmpty)
+            continue;
+
+        auto track = std::make_shared<AudioTrack> (request.name);
+        track->setClips (std::move (clips));
+        track->setArmed (request.armed);
+
+        if (! request.state.isVoid())
+            track->applyState (request.state);
+
+        if (request.armed)
+            for (const auto& other : tracks)
+                other->setArmed (false);
+
+        mixer.addTrack (std::move (track));
     }
 
+    mixer.updateContentLength();
     sendChangeMessage();
 
     // El dispositivo cambió de frecuencia mientras se decodificaba.
-    if (! decoded.empty() && std::abs (decodedSampleRate - engine.getSampleRate()) > 0.5)
+    if (! sources.empty() && std::abs (decodedSampleRate - engine.getSampleRate()) > 0.5)
         reloadAllTracks();
 
     if (onDone != nullptr)
@@ -340,17 +433,38 @@ void ProjectManager::finishLoading (std::vector<DecodedTrack>& decoded, const ju
 void ProjectManager::reloadAllTracks()
 {
     const auto document = describe();
+    auto requests = requestsFrom (document);
+
+    // Conservar qué pista estaba armada.
+    const auto& tracks = engine.getMixer().getTracks();
+
+    for (size_t i = 0; i < requests.size() && i < tracks.size(); ++i)
+        requests[i].armed = tracks[i]->isArmed();
 
     ++generation;
     engine.getMixer().removeAllTracks();
-
-    std::vector<LoadRequest> requests;
-
-    for (const auto& track : document.tracks)
-        requests.push_back ({ track.name, track.file, track.startSeconds, track.state, false });
-
     sendChangeMessage();
     loadTracks (std::move (requests), nullptr);
+}
+
+std::vector<ProjectManager::TrackRequest> ProjectManager::requestsFrom (const ProjectDocument& document) const
+{
+    std::vector<TrackRequest> requests;
+
+    for (const auto& track : document.tracks)
+    {
+        TrackRequest request;
+        request.name = track.name;
+        request.state = track.state;
+        request.keepIfEmpty = true;
+
+        for (const auto& clip : track.clips)
+            request.clips.push_back ({ clip.file, clip.startSeconds, clip.offsetSeconds, clip.lengthSeconds });
+
+        requests.push_back (std::move (request));
+    }
+
+    return requests;
 }
 
 ProjectDocument ProjectManager::describe() const
@@ -360,9 +474,25 @@ ProjectDocument ProjectManager::describe() const
     document.masterVolumeDb = mixer.getMasterVolume().get();
 
     for (const auto& track : mixer.getTracks())
-        document.tracks.push_back ({ track->getName(), track->getSourceFile(),
-                                     static_cast<double> (track->getStartSample()) / track->getSampleRate(),
-                                     track->getState() });
+    {
+        TrackDescription description;
+        description.name = track->getName();
+        description.state = track->getState();
+
+        for (const auto& clip : track->getClips())
+        {
+            if (clip.source == nullptr)
+                continue;
+
+            const auto rate = clip.source->sampleRate;
+            description.clips.push_back ({ clip.source->file,
+                                           static_cast<double> (clip.timelineStart) / rate,
+                                           static_cast<double> (clip.sourceOffset) / rate,
+                                           static_cast<double> (clip.length) / rate });
+        }
+
+        document.tracks.push_back (std::move (description));
+    }
 
     return document;
 }
