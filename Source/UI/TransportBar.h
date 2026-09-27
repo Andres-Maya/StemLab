@@ -38,6 +38,7 @@ private:
     juce::Label timeLabel;
     juce::Label bpmCaption { {}, "BPM" };
     juce::Label bpmLabel;
+    juce::Label deviceLabel;
     juce::Label masterCaption { {}, "Master" };
     juce::Slider masterSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
     LevelMeter masterMeter;

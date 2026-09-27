@@ -30,7 +30,8 @@ struct RecordingInfo
 */
 class AudioEngine final : private juce::AudioIODeviceCallback,
                           private juce::AsyncUpdater,
-                          private juce::ChangeListener
+                          private juce::ChangeListener,
+                          private juce::Timer
 {
 public:
     AudioEngine();
@@ -59,6 +60,12 @@ public:
     /** Nombre de la salida predeterminada del sistema para el tipo de dispositivo actual. */
     juce::String getSystemDefaultOutputName() const;
 
+    /** true si el dispositivo de audio está abierto y funcionando. */
+    bool isDeviceRunning() const;
+
+    /** Salida que está sonando, o cadena vacía si no hay audio. */
+    juce::String getCurrentOutputName() const;
+
     //==========================================================================
     // Grabación (hilo de mensajes)
     juce::Result startRecording (const juce::File& file);
@@ -77,8 +84,11 @@ private:
     void audioDeviceStopped() override;
     void handleAsyncUpdate() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void timerCallback() override;
 
-    void updateFollowedOutput();
+    /** Sigue la salida de Windows y recupera el dispositivo si se cerró. */
+    void updateDevice();
+    juce::String getSystemDefaultDeviceName (bool input) const;
     void writeToOutputs (float* const* outputs, int numOutputs, int offset, int numSamples) noexcept;
 
     juce::AudioDeviceManager deviceManager;
@@ -92,9 +102,13 @@ private:
     std::atomic<double> sampleRate { 44100.0 };
     int recordingLatency = 0;
 
+    bool initialised = false;
     bool followSystemOutput = true;
-    bool applyingSystemOutput = false;
+    bool applyingDeviceChange = false;
     juce::String knownSystemOutput;     // última salida predeterminada vista
+    juce::uint32 lastRecoveryAttempt = 0;
+    juce::AudioDeviceManager::AudioDeviceSetup lastRunningSetup;   // última configuración que funcionó
+    bool hadRunningDevice = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };

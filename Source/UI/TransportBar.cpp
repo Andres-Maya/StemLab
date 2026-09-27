@@ -52,6 +52,11 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     };
     addAndMakeVisible (bpmLabel);
 
+    deviceLabel.setFont (juce::FontOptions (11.0f));
+    deviceLabel.setJustificationType (juce::Justification::centredRight);
+    deviceLabel.setTooltip ("Salida de audio actual (Audio > Configuración de audio)"_u8);
+    addAndMakeVisible (deviceLabel);
+
     masterSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
     addAndMakeVisible (masterSlider);
     addAndMakeVisible (masterMeter);
@@ -74,6 +79,13 @@ void TransportBar::timerCallback()
     const auto recording = engine.isRecording();
     blinkCounter = recording ? (blinkCounter + 1) % 20 : 0;
     recordButton.setToggleState (recording && blinkCounter < 12, juce::dontSendNotification);
+
+    // Qué salida está sonando; en rojo si el dispositivo de audio no funciona.
+    const auto output = engine.getCurrentOutputName();
+    deviceLabel.setText (output.isNotEmpty() ? "Salida: " + output
+                                             : "Sin audio: revisa Audio > Configuración de audio"_u8,
+                         juce::dontSendNotification);
+    deviceLabel.setColour (juce::Label::textColourId, output.isNotEmpty() ? Palette::textDim : Palette::record);
 
     if (! bpmLabel.isBeingEdited())
         bpmLabel.setText (juce::String (projects.getProject().getBpm(), 1), juce::dontSendNotification);
@@ -107,5 +119,7 @@ void TransportBar::resized()
     bounds.removeFromRight (8);
     masterSlider.setBounds (bounds.removeFromRight (220));
     masterCaption.setBounds (bounds.removeFromRight (50));
+    bounds.removeFromRight (12);
+    deviceLabel.setBounds (bounds);
 }
 }
