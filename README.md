@@ -17,6 +17,7 @@ Archivo/Grabación → Gain → Saturación → EQ → Compresor → Limiter →
 ```
 Source/
   Application/  Main.cpp            arranque; crea y destruye los servicios en orden
+                FileAssociation     .stemlab con el icono de StemLab y doble clic (Windows)
   Audio/        AudioEngine         callback del dispositivo (hilo de audio)
                 Transport           cabezal único para todas las pistas
                 AudioMixer          lista de pistas + bus master
@@ -33,6 +34,8 @@ Source/
   UI/           MainWindow · MainComponent · TransportBar · TrackListView · TrackView
                 WaveformView · TimeRuler · MixerView · EffectPanel · ExportDialog ...
   Utils/        Parameter (valor atómico UI ↔ audio) · PythonEnvironment · Strings
+Resources/
+  StemLab.png                       icono de la aplicación y de los archivos .stemlab
 python/
   stemlab_separate.py               Demucs: carga, preprocesado, inferencia, stems
   stemlab_encode_mp3.py             codifica a MP3 la mezcla exportada (LAME)
@@ -200,7 +203,8 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - **Archivo → Guardar proyecto como…** (**Ctrl+Shift+S**): escribe un nombre, por ejemplo `MiCancion`. StemLab crea la carpeta `MiCancion/` con `MiCancion.stemlab` y el audio del proyecto dentro. Por defecto se guarda en `Documentos\StemLab`. Después, **Ctrl+S** guarda en el mismo archivo.
    - **Archivo → Abrir proyecto…** (**Ctrl+O**): elige un `.stemlab`.
    - **Archivo → Abrir reciente**: los últimos 10 proyectos abiertos o guardados. La lista se conserva al cerrar StemLab.
-   - También puedes **arrastrar un `.stemlab` a la ventana**, o abrirlo con StemLab desde el Explorador (clic derecho → **Abrir con** → `StemLab.exe`). Si StemLab ya está abierto, el proyecto se abre en esa ventana.
+   - **Doble clic en un `.stemlab`** en el Explorador lo abre en StemLab. Los archivos llevan el icono de StemLab. Al arrancar, StemLab asocia la extensión con su ejecutable solo para tu usuario (`HKEY_CURRENT_USER\Software\Classes`, sin permisos de administrador). Si mueves `StemLab.exe`, se actualiza en el siguiente arranque. Para quitar la asociación, borra en esa rama del registro las claves `.stemlab` y `StemLab.Project`.
+   - También puedes **arrastrar un `.stemlab` a la ventana**. Si StemLab ya está abierto, el proyecto se abre en esa ventana.
    - Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
 
 Atajos de teclado:
