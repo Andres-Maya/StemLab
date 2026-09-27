@@ -50,7 +50,20 @@ private:
         int x = -1;
     };
 
+    /** Fila temporal que dibuja la grabación en curso a medida que llega el audio. */
+    struct RecordingLane final : public juce::Component
+    {
+        void paint (juce::Graphics&) override;
+
+        std::vector<float> peaks;           // un pico por bin de AudioRecorder::previewBinSize
+        juce::int64 startSample = -1;       // posición final del clip (con latencia compensada)
+        double sampleRate = 48000.0;
+        double timelineLength = 60.0;
+    };
+
     void timerCallback() override;
+    void updateRecordingLane();
+    void setTimelineLength (double seconds);
     void updateTimeline();
     void layoutRows();
     void seekTo (double seconds);
@@ -60,6 +73,7 @@ private:
 
     // content va antes que viewport: el viewport se destruye primero y lo suelta.
     Content content;
+    RecordingLane recordingLane;
     Playhead playhead;
     TimeRuler ruler;
     juce::Viewport viewport;

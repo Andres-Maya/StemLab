@@ -31,11 +31,28 @@ public:
     juce::int64 getStartPosition() const noexcept       { return startPosition.load(); }
 
     //==========================================================================
+    // Vista previa en directo: un pico por cada previewBinSize muestras.
+    static constexpr int previewBinSize = 512;
+
+    /** Hilo de mensajes: copia en dest los picos nuevos desde la última lectura
+        y devuelve cuántos. */
+    int readPreviewPeaks (float* dest, int maxPeaks) noexcept;
+
+    //==========================================================================
     // Hilo de audio
     void write (const float* const* input, int numInputChannels, int numSamples,
                 juce::int64 timelinePosition) noexcept;
 
 private:
+    void pushPreviewPeak (float peak) noexcept;
+
+    // Cola sin bloqueos audio -> UI con la memoria ya reservada (~40 s de margen).
+    static constexpr int previewCapacity = 4096;
+    juce::AbstractFifo previewFifo { previewCapacity };
+    std::vector<float> previewPeaks = std::vector<float> (previewCapacity, 0.0f);
+    float binPeak = 0.0f;
+    int binCount = 0;
+
     juce::TimeSliceThread writerThread { "StemLab Recorder" };
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter;
 
