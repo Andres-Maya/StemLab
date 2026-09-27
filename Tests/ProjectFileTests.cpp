@@ -3,11 +3,14 @@
 
 #include "AI/AIProcessManager.h"
 #include "AI/DemucsSeparator.h"
+#include "Application/FileAssociation.h"
 #include "Audio/AudioEngine.h"
 #include "Project/ProjectManager.h"
 #include "UI/MainComponent.h"
 #include "UI/StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
+
+#include <algorithm>
 
 // Archivos de proyecto .stemlab: dónde se guardan, cómo se abren, proyectos
 // antiguos (project.json) y "Abrir reciente".
@@ -197,11 +200,38 @@ namespace
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
+
+    void testFileAssociationValues()
+    {
+        section ("Asociación de .stemlab en Windows (sin escribir en el registro)");
+
+        const juce::File exe ("C:/Program Files/StemLab/StemLab.exe");     // con espacios
+        const auto values = FileAssociation::registryValuesFor (exe);
+        const auto valueOf = [&values] (const juce::String& path)
+        {
+            for (const auto& [key, value] : values)
+                if (key == path)
+                    return value;
+
+            return "(no está)"_u8;
+        };
+
+        const juce::String classes ("HKEY_CURRENT_USER\\Software\\Classes\\");
+        const auto quotedExe = "\"" + exe.getFullPathName() + "\"";
+        CHECK (values.size() == 4 && std::all_of (values.begin(), values.end(), [&] (const auto& v) { return v.first.startsWith (classes); }),
+               "solo en el registro del usuario actual (sin administrador)");
+        CHECK (valueOf (classes + ".stemlab\\") == "StemLab.Project", ".stemlab -> StemLab.Project");
+        CHECK (valueOf (classes + "StemLab.Project\\DefaultIcon\\") == quotedExe + ",0",
+               "icono: el de StemLab.exe (" << valueOf (classes + "StemLab.Project\\DefaultIcon\\") << ")");
+        CHECK (valueOf (classes + "StemLab.Project\\shell\\open\\command\\") == quotedExe + " \"%1\"",
+               "doble clic: la ruta va entre comillas aunque tenga espacios");
+    }
 }
 
 void runProjectFileTests()
 {
     testStemlabFiles();
+    testFileAssociationValues();
     testRecentProjects();
 }
 }
