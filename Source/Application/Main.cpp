@@ -34,6 +34,7 @@ public:
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
         engine = std::make_unique<AudioEngine>();
+        engine->setFollowSystemOutput (settings.getUserSettings()->getBoolValue ("followSystemOutput", true));
         const auto savedDevice = settings.getUserSettings()->getXmlValue ("audioDevice");
         const auto audioError = engine->initialise (savedDevice.get());
 
@@ -57,6 +58,9 @@ public:
             if (engine != nullptr)
                 if (const auto deviceState = engine->getDeviceManager().createStateXml())
                     userSettings->setValue ("audioDevice", deviceState.get());
+
+            if (engine != nullptr)
+                userSettings->setValue ("followSystemOutput", engine->isFollowingSystemOutput());
 
             if (ai != nullptr)
                 userSettings->setValue ("aiModel", ai->getSeparator().getCurrentModel());

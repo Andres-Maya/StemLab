@@ -29,7 +29,8 @@ struct RecordingInfo
     IA, guardar) ocurre en otros hilos y llega aquí ya preparado.
 */
 class AudioEngine final : private juce::AudioIODeviceCallback,
-                          private juce::AsyncUpdater
+                          private juce::AsyncUpdater,
+                          private juce::ChangeListener
 {
 public:
     AudioEngine();
@@ -45,6 +46,18 @@ public:
     const AudioMixer& getMixer() const noexcept             { return mixer; }
 
     double getSampleRate() const noexcept                   { return sampleRate.load(); }
+
+    //==========================================================================
+    // Salida predeterminada del sistema (hilo de mensajes)
+
+    /** Si está activo, StemLab usa siempre la salida predeterminada de Windows
+        y la sigue cuando cambia (p. ej. al conectar o desconectar audífonos).
+        Elegir otra salida a mano en la configuración lo desactiva. */
+    void setFollowSystemOutput (bool shouldFollow);
+    bool isFollowingSystemOutput() const noexcept           { return followSystemOutput; }
+
+    /** Nombre de la salida predeterminada del sistema para el tipo de dispositivo actual. */
+    juce::String getSystemDefaultOutputName() const;
 
     //==========================================================================
     // Grabación (hilo de mensajes)
@@ -63,7 +76,9 @@ private:
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
     void handleAsyncUpdate() override;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
+    void updateFollowedOutput();
     void writeToOutputs (float* const* outputs, int numOutputs, int offset, int numSamples) noexcept;
 
     juce::AudioDeviceManager deviceManager;
@@ -76,6 +91,10 @@ private:
     juce::AudioBuffer<float> mixBus;
     std::atomic<double> sampleRate { 44100.0 };
     int recordingLatency = 0;
+
+    bool followSystemOutput = true;
+    bool applyingSystemOutput = false;
+    juce::String knownSystemOutput;     // última salida predeterminada vista
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };

@@ -1,5 +1,6 @@
 #include "MainComponent.h"
 
+#include "AudioSettingsComponent.h"
 #include "StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
 
@@ -402,14 +403,8 @@ void MainComponent::showProjectFolder()
 
 void MainComponent::showAudioSettings()
 {
-    auto selector = std::make_unique<juce::AudioDeviceSelectorComponent> (engine.getDeviceManager(),
-                                                                          0, 2,     // entradas
-                                                                          2, 2,     // salidas
-                                                                          false, false, true, false);
-    selector->setSize (560, 440);
-
     juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (selector.release());
+    options.content.setOwned (new AudioSettingsComponent (engine));
     options.dialogTitle = "Configuración de audio"_u8;
     options.dialogBackgroundColour = Palette::panel;
     options.escapeKeyTriggersCloseButton = true;
