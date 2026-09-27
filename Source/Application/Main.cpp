@@ -35,6 +35,7 @@ public:
 
         engine = std::make_unique<AudioEngine>();
         engine->setFollowSystemOutput (settings.getUserSettings()->getBoolValue ("followSystemOutput", true));
+        engine->getInputGain().set (static_cast<float> (settings.getUserSettings()->getDoubleValue ("inputGain", 18.0)));
         const auto savedDevice = settings.getUserSettings()->getXmlValue ("audioDevice");
         const auto audioError = engine->initialise (savedDevice.get());
 
@@ -60,7 +61,10 @@ public:
                     userSettings->setValue ("audioDevice", deviceState.get());
 
             if (engine != nullptr)
+            {
                 userSettings->setValue ("followSystemOutput", engine->isFollowingSystemOutput());
+                userSettings->setValue ("inputGain", engine->getInputGain().get());
+            }
 
             if (ai != nullptr)
                 userSettings->setValue ("aiModel", ai->getSeparator().getCurrentModel());
