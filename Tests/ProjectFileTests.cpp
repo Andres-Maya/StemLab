@@ -206,7 +206,8 @@ namespace
         section ("Asociación de .stemlab en Windows (sin escribir en el registro)");
 
         const juce::File exe ("C:/Program Files/StemLab/StemLab.exe");     // con espacios
-        const auto values = FileAssociation::registryValuesFor (exe);
+        const juce::File icon ("C:/Users/Ana María/AppData/Local/StemLab/Icons/StemLab-0123456789ab.ico");
+        const auto values = FileAssociation::registryValuesFor (exe, icon);
         const auto valueOf = [&values] (const juce::String& path)
         {
             for (const auto& [key, value] : values)
@@ -221,10 +222,37 @@ namespace
         CHECK (values.size() == 4 && std::all_of (values.begin(), values.end(), [&] (const auto& v) { return v.first.startsWith (classes); }),
                "solo en el registro del usuario actual (sin administrador)");
         CHECK (valueOf (classes + ".stemlab\\") == "StemLab.Project", ".stemlab -> StemLab.Project");
-        CHECK (valueOf (classes + "StemLab.Project\\DefaultIcon\\") == quotedExe + ",0",
-               "icono: el de StemLab.exe (" << valueOf (classes + "StemLab.Project\\DefaultIcon\\") << ")");
+        CHECK (valueOf (classes + "StemLab.Project\\DefaultIcon\\") == "\"" + icon.getFullPathName() + "\"",
+               "icono: el .ico propio de los proyectos, entre comillas");
         CHECK (valueOf (classes + "StemLab.Project\\shell\\open\\command\\") == quotedExe + " \"%1\"",
                "doble clic: la ruta va entre comillas aunque tenga espacios");
+
+        section ("Icono de los proyectos .stemlab");
+
+        const auto folder = outputFolder().getChildFile ("Iconos");
+        folder.deleteRecursively();
+        folder.createDirectory();
+        const auto oldIcon = folder.getChildFile ("StemLab-viejo.ico");
+        oldIcon.replaceWithText ("icono de otra versión");
+
+        const auto written = FileAssociation::writeProjectIcon (folder);
+        CHECK (written.existsAsFile() && written.getFileName().startsWith ("StemLab-") && written.hasFileExtension (".ico"),
+               "se escribe como " << written.getFileName());
+        CHECK (! oldIcon.exists(), "y borra el icono de la versión anterior");
+
+        juce::MemoryBlock data;
+        written.loadFileAsData (data);
+        const auto* bytes = static_cast<const juce::uint8*> (data.getData());
+        const auto count = data.getSize() >= 6 ? bytes[4] | (bytes[5] << 8) : 0;
+        CHECK (data.getSize() > 6 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 1 && count == 10,
+               "es un .ico con 10 tamaños, de 16 a 256 px (" << count << ")");
+
+        const auto modified = written.getLastModificationTime();
+        juce::Thread::sleep (20);
+        CHECK (FileAssociation::writeProjectIcon (folder) == written && written.getLastModificationTime() == modified,
+               "la segunda vez no lo reescribe (mismo nombre, mismo archivo)");
+
+        folder.deleteRecursively();
     }
 }
 
