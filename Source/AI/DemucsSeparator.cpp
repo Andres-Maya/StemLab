@@ -45,10 +45,13 @@ DemucsSeparator::DemucsSeparator (Settings initialSettings)
 
 std::vector<AudioSeparator::ModelInfo> DemucsSeparator::getAvailableModels() const
 {
+    const juce::StringArray fourStems { "vocals", "drums", "bass", "other" };
+
     return {
-        { "htdemucs",    "4 pistas: voz, batería, bajo y otros (recomendado)"_u8 },
-        { "htdemucs_ft", "4 pistas, más calidad (unas 4 veces más lento)"_u8 },
-        { "htdemucs_6s", "6 pistas: añade guitarra y piano (experimental)"_u8 },
+        { "htdemucs",    "4 pistas: voz, batería, bajo y otros (recomendado)"_u8, fourStems },
+        { "htdemucs_ft", "4 pistas, más calidad (unas 4 veces más lento)"_u8, fourStems },
+        { "htdemucs_6s", "6 pistas: añade guitarra y piano (experimental)"_u8,
+          { "vocals", "drums", "bass", "guitar", "piano", "other" } },
     };
 }
 

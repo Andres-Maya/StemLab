@@ -22,6 +22,17 @@ namespace
     };
 }
 
+juce::StringArray AudioSeparator::getExpectedStems() const
+{
+    const auto current = getCurrentModel();
+
+    for (const auto& model : getAvailableModels())
+        if (model.id == current && ! model.stems.isEmpty())
+            return model.stems;
+
+    return { "vocals", "drums", "bass", "other" };
+}
+
 juce::String stemDisplayName (const juce::String& stemId)
 {
     for (const auto& stem : knownStems)
