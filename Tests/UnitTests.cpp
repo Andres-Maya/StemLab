@@ -467,10 +467,10 @@ namespace
         const auto folder = outputFolder().getChildFile ("ProyectoPrueba");
         folder.deleteRecursively();
         const auto saved = projects.saveAs (folder);
-        CHECK (saved.wasOk() && folder.getChildFile ("project.json").existsAsFile(), "Guardar como crea project.json");
+        CHECK (saved.wasOk() && folder.getChildFile ("ProyectoPrueba.stemlab").existsAsFile(), "Guardar como crea ProyectoPrueba.stemlab");
         CHECK (track->getSourceFile().isAChildOf (folder), "los clips apuntan a la carpeta nueva");
 
-        const auto json = folder.getChildFile ("project.json").loadFileAsString();
+        const auto json = folder.getChildFile ("ProyectoPrueba.stemlab").loadFileAsString();
         CHECK (json.contains ("\"audio/import-me.wav\"") && json.contains ("\"clips\"") && json.contains ("\"version\": 2"),
                "JSON v2 con clips y rutas relativas");
 
