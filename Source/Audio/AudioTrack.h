@@ -2,6 +2,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "AudioClip.h"
 #include "DSP/EffectChain.h"
 #include "Utils/Parameter.h"
 
@@ -10,29 +11,31 @@
 namespace stemlab
 {
 /**
-    Una pista: audio en memoria + posición en la línea de tiempo + controles de
-    canal (volumen, paneo, mute, solo) + cadena de efectos.
+    Una pista: lista de clips en la línea de tiempo + controles de canal
+    (volumen, paneo, mute, solo) + cadena de efectos.
 
-    El audio se decodifica completo en memoria (estéreo, a la frecuencia del
-    dispositivo) en un hilo de trabajo antes de crear la pista. Así el hilo de
-    audio solo copia muestras: nada de lecturas de disco ni conversiones.
+    El audio de los clips ya está decodificado en memoria (ClipSource), así que
+    el hilo de audio solo copia muestras: nada de disco ni conversiones.
 
     Hilos:
-      - Hilo de mensajes: nombre, archivo, estado, prepare().
-      - Hilo de audio: renderAdd(). Solo lee atómicos y el buffer (inmutable).
+      - Hilo de mensajes: nombre, clips (getClips/setClips), estado, prepare().
+      - Hilo de audio: renderAdd(). Lee la lista de clips con ScopedTryLock: si
+        en ese instante se está editando, esa pista sale en silencio un bloque
+        en lugar de bloquear el audio.
 */
 class AudioTrack
 {
 public:
-    AudioTrack (juce::String name, juce::File sourceFile, juce::AudioBuffer<float> audio, double sampleRate);
+    explicit AudioTrack (juce::String name);
 
     //==========================================================================
     // Hilo de mensajes
     const juce::String& getName() const noexcept            { return name; }
     void setName (juce::String newName)                     { name = std::move (newName); }
 
-    const juce::File& getSourceFile() const noexcept        { return sourceFile; }
-    void setSourceFile (juce::File newFile)                 { sourceFile = std::move (newFile); }
+    /** Pista elegida para grabar (solo una a la vez; lo gestiona ProjectManager). */
+    bool isArmed() const noexcept                           { return armed; }
+    void setArmed (bool shouldBeArmed) noexcept             { armed = shouldBeArmed; }
 
     Parameter& getVolume() noexcept                         { return *volume; }
     Parameter& getPan() noexcept                            { return *pan; }
@@ -44,15 +47,24 @@ public:
     void applyState (const juce::var& state);
 
     //==========================================================================
-    // Datos inmutables del audio (seguros desde cualquier hilo)
-    const juce::AudioBuffer<float>& getAudio() const noexcept   { return audio; }
-    double getSampleRate() const noexcept                       { return sampleRate; }
-    juce::int64 getLengthInSamples() const noexcept             { return audio.getNumSamples(); }
-    double getLengthInSeconds() const noexcept                  { return static_cast<double> (getLengthInSamples()) / sampleRate; }
+    // Clips (hilo de mensajes). Los clips posteriores suenan por encima de los
+    // anteriores donde se solapan.
+    std::vector<AudioClip> getClips() const;
+    void setClips (std::vector<AudioClip> newClips);
+    void addClip (AudioClip clip);
+    bool hasClips() const;
 
-    juce::int64 getStartSample() const noexcept                 { return startSample.load (std::memory_order_relaxed); }
-    void setStartSample (juce::int64 newStart) noexcept         { startSample.store (juce::jmax<juce::int64> (0, newStart)); }
-    juce::int64 getEndSample() const noexcept                   { return getStartSample() + getLengthInSamples(); }
+    /** Archivos de audio distintos que usan los clips. */
+    std::vector<std::shared_ptr<ClipSource>> getSources() const;
+
+    /** Archivo del primer clip (el que se envía a la separación por IA). */
+    juce::File getSourceFile() const;
+
+    /** Frecuencia del audio de los clips, o 0 si la pista está vacía. */
+    double getSampleRate() const;
+
+    /** Fin del último clip en la línea de tiempo (seguro desde cualquier hilo). */
+    juce::int64 getEndSample() const noexcept               { return endSample.load(); }
 
     /** Pico desde la última lectura (para los medidores de la UI). */
     float getAndResetPeak (int channel) noexcept;
@@ -67,12 +79,14 @@ public:
                     juce::int64 timelinePosition, bool audible) noexcept;
 
 private:
-    juce::String name;
-    juce::File sourceFile;
+    void renderClips (int numSamples, juce::int64 timelinePosition) noexcept;
 
-    const juce::AudioBuffer<float> audio;
-    const double sampleRate;
-    std::atomic<juce::int64> startSample { 0 };
+    juce::String name;
+    bool armed = false;
+
+    mutable juce::CriticalSection clipLock;
+    std::vector<AudioClip> clips;
+    std::atomic<juce::int64> endSample { 0 };
 
     std::unique_ptr<Parameter> volume, pan, mute, solo;
     EffectChain effects;
