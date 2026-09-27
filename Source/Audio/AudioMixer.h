@@ -28,6 +28,9 @@ public:
     /** insertIndex < 0 o fuera de rango: al final. */
     void addTrack (std::shared_ptr<AudioTrack> track, int insertIndex = -1);
     std::shared_ptr<AudioTrack> removeTrack (const AudioTrack* track);
+
+    /** Cambia el orden de las pistas (solo visual: no afecta al sonido). */
+    void moveTrack (int fromIndex, int toIndex);
     std::vector<std::shared_ptr<AudioTrack>> removeAllTracks();
 
     /** Solo desde el hilo de mensajes (el único que modifica la lista). */

@@ -58,6 +58,19 @@ std::shared_ptr<AudioTrack> AudioMixer::removeTrack (const AudioTrack* track)
     return removed;
 }
 
+void AudioMixer::moveTrack (int fromIndex, int toIndex)
+{
+    const juce::ScopedLock lock (tracksLock);
+    const auto size = static_cast<int> (tracks.size());
+
+    if (! juce::isPositiveAndBelow (fromIndex, size) || ! juce::isPositiveAndBelow (toIndex, size) || fromIndex == toIndex)
+        return;
+
+    auto track = std::move (tracks[static_cast<size_t> (fromIndex)]);
+    tracks.erase (tracks.begin() + fromIndex);
+    tracks.insert (tracks.begin() + toIndex, std::move (track));
+}
+
 std::vector<std::shared_ptr<AudioTrack>> AudioMixer::removeAllTracks()
 {
     std::vector<std::shared_ptr<AudioTrack>> removed;
