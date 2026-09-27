@@ -29,7 +29,7 @@ Source/
   AI/           AudioSeparator      interfaz de cualquier motor de separación
                 DemucsSeparator     lanza python/stemlab_separate.py
                 AIProcessManager    ejecuta la separación en un hilo propio
-  Project/      Project · ProjectSerializer (project.json) · ProjectManager (+ deshacer/rehacer)
+  Project/      Project · ProjectSerializer (archivo .stemlab) · ProjectManager (+ deshacer/rehacer)
   UI/           MainWindow · MainComponent · TransportBar · TrackListView · TrackView
                 WaveformView · TimeRuler · MixerView · EffectPanel · ExportDialog ...
   Utils/        Parameter (valor atómico UI ↔ audio) · PythonEnvironment · Strings
@@ -44,7 +44,7 @@ Tests/                              pruebas automáticas (ver "Pruebas")
 | Hilo | Qué hace | Qué **no** hace nunca |
 |---|---|---|
 | **Audio** (`AudioEngine::audioDeviceIOCallbackWithContext`) | mezclar, aplicar efectos, copiar la entrada al FIFO de grabación | reservar memoria, bloquear un lock, leer/escribir disco, liberar objetos |
-| **Mensajes** (UI) | interfaz, crear/quitar pistas, guardar `project.json` | decodificar audio largo, ejecutar la IA |
+| **Mensajes** (UI) | interfaz, crear/quitar pistas, guardar el `.stemlab` | decodificar audio largo, ejecutar la IA |
 | **Loader** (`ProjectManager`) | decodificar y remuestrear archivos | tocar la UI o la lista de pistas |
 | **IA** (`AIProcessManager`) | lanzar Python y leer su progreso | tocar el motor de audio |
 | **Exportación** (`ExportDialog`) | renderizar una copia de la mezcla y escribir el archivo | tocar el motor de audio |
@@ -84,10 +84,10 @@ Al terminar, C++ carga los `*.wav` de la carpeta de salida como pistas nuevas y 
 
 ```
 MiProyecto/
-  project.json      (versión 2) nombre, BPM, master y, por pista: sus clips (archivo
-                    relativo, inicio, desde dónde del archivo y duración, en segundos),
-                    volumen, paneo, mute, solo y parámetros de cada efecto.
-                    Los proyectos de la versión 1 se siguen abriendo.
+  MiProyecto.stemlab  el proyecto: un JSON (versión 2) con nombre, BPM, master y, por
+                    pista: sus clips (archivo relativo, inicio, desde dónde del archivo
+                    y duración, en segundos), volumen, paneo, mute, solo y parámetros
+                    de cada efecto. Los proyectos de la versión 1 se siguen abriendo.
   audio/            copias de los archivos importados
   stems/            resultados de la IA
   recordings/       grabaciones
@@ -95,6 +95,8 @@ MiProyecto/
 ```
 
 Hasta el primer **Guardar como**, la sesión vive en `%TEMP%\StemLab\Sesion-...`.
+
+Las rutas son relativas a la carpeta, así que el proyecto se puede mover o copiar entero (por ejemplo, a otro equipo). Los proyectos antiguos guardaban el mismo JSON en `project.json`: se siguen abriendo (eligiendo el `project.json` o su carpeta), **Guardar** los mantiene así y **Guardar como** en su misma carpeta los convierte en `.stemlab`.
 
 ---
 
@@ -194,7 +196,12 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - Se exporta desde el principio hasta el final del último fragmento. Por defecto se guarda en la carpeta `exports/` del proyecto. Si el proyecto aún no se ha guardado, se guarda en `Documentos\StemLab`.
    - La ventana de progreso tiene **Cancelar**. Si cancelas, no queda ningún archivo a medias.
    - Si la mezcla pasa de 0 dBFS, StemLab avisa de que se ha recortado. El WAV de 32 bits en coma flotante no recorta.
-9. **Archivo → Guardar proyecto como…** Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
+9. **Guardar y abrir proyectos:**
+   - **Archivo → Guardar proyecto como…** (**Ctrl+Shift+S**): escribe un nombre, por ejemplo `MiCancion`. StemLab crea la carpeta `MiCancion/` con `MiCancion.stemlab` y el audio del proyecto dentro. Por defecto se guarda en `Documentos\StemLab`. Después, **Ctrl+S** guarda en el mismo archivo.
+   - **Archivo → Abrir proyecto…** (**Ctrl+O**): elige un `.stemlab`.
+   - **Archivo → Abrir reciente**: los últimos 10 proyectos abiertos o guardados. La lista se conserva al cerrar StemLab.
+   - También puedes **arrastrar un `.stemlab` a la ventana**, o abrirlo con StemLab desde el Explorador (clic derecho → **Abrir con** → `StemLab.exe`). Si StemLab ya está abierto, el proyecto se abre en esa ventana.
+   - Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
 
 Atajos de teclado:
 
