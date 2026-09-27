@@ -14,7 +14,7 @@
 namespace stemlab
 {
 /**
-    Fila de una pista:  [nombre · M · S · volumen · paneo · medidor] [forma de onda]
+    Fila de una pista:  [nombre · ● · M · S · × · volumen · paneo · medidor] [clips]
 */
 class TrackView final : public juce::Component,
                         private Parameter::Listener
@@ -31,11 +31,19 @@ public:
     const std::shared_ptr<AudioTrack>& getTrackPointer() const noexcept { return track; }
 
     void setSelected (bool shouldBeSelected);
+    void setSelectedClip (juce::uint32 clipId)                      { waveform.setSelectedClip (clipId); }
     void setTimelineLength (double seconds);
+
+    /** Volver a leer clips y estado de grabación de la pista. */
+    void trackChanged();
 
     std::function<void (TrackView&)> onSelect;
     std::function<void (TrackView&)> onDelete;
+    std::function<void (TrackView&)> onArm;
     std::function<void (double seconds)> onSeek;
+    std::function<void (TrackView&, juce::uint32 clipId)> onClipClicked;
+    std::function<void (TrackView&, juce::uint32 clipId, double seconds)> onContextMenu;
+    std::function<void()> onClipsEdited;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -49,6 +57,7 @@ private:
     bool selected = false;
 
     juce::Label nameLabel;
+    IconButton armButton;
     juce::TextButton muteButton { "M" };
     juce::TextButton soloButton { "S" };
     IconButton deleteButton;
