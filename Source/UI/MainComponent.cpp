@@ -41,6 +41,9 @@ namespace
         undoId,
         redoId,
         exportMixId,
+        copyTrackId,
+        cutTrackId,
+        pasteTrackId,
         modelBaseId = 1000
     };
 
@@ -91,8 +94,19 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
         projects.clipsEdited (track, std::move (clipsBefore), actionName);
     };
     trackList.onAddTrack = [this] (int insertIndex) { addTrack (insertIndex); };
-    trackList.onTracksReordered = [this] { projects.notifyTracksEdited(); };
-    trackList.onTrackRenamed = [this] (AudioTrack&) { mixer.repaint(); };
+    trackList.onTracksReordered = [this] (std::shared_ptr<AudioTrack> track, int fromIndex, int toIndex)
+    {
+        projects.trackMoved (track, fromIndex, toIndex);
+    };
+    trackList.onTrackRenamed = [this] (std::shared_ptr<AudioTrack> track, const juce::String& oldName)
+    {
+        projects.trackRenamed (track, oldName);
+        mixer.repaint();
+    };
+    trackList.onCopyTrack = [this] (std::shared_ptr<AudioTrack> track) { copyTrack (track); };
+    trackList.onCutTrack = [this] (std::shared_ptr<AudioTrack> track) { cutTrack (track); };
+    trackList.onPasteTrack = [this] (int insertIndex) { pasteTrack (insertIndex); };
+    trackList.canPasteTrack = [this] { return trackClipboard != nullptr; };
     trackList.onContextMenu = [this] (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
     {
         showClipMenu (std::move (track), clipId, seconds);
@@ -163,9 +177,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey)                   { deleteSelectedClip(); return true; }
     if (key == juce::KeyPress ('r'))                        { toggleRecording(); return true; }
     if (key == juce::KeyPress ('s'))                        { splitAtPlayhead(); return true; }
-    if (key == juce::KeyPress ('x', command, 0))            { cutSelectedClip(); return true; }
-    if (key == juce::KeyPress ('c', command, 0))            { copySelectedClip(); return true; }
-    if (key == juce::KeyPress ('v', command, 0))            { pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); return true; }
+    if (key == juce::KeyPress ('x', command, 0))            { cutSelection(); return true; }
+    if (key == juce::KeyPress ('c', command, 0))            { copySelection(); return true; }
+    if (key == juce::KeyPress ('v', command, 0))            { paste(); return true; }
     if (key == juce::KeyPress ('t', command, 0))            { addTrack(); return true; }
     if (key == juce::KeyPress::F2Key)                       { trackList.renameSelectedTrack(); return true; }
     if (key == juce::KeyPress (juce::KeyPress::upKey, juce::ModifierKeys (juce::ModifierKeys::altModifier), 0))   { trackList.moveSelectedTrack (-1); return true; }
@@ -183,6 +197,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     trackList.refresh();
+    mixer.repaint();        // el nombre de la pista puede haber cambiado (deshacer)
     updateWindowTitle();
     menuItemsChanged();
 }
@@ -233,6 +248,9 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             addItem (menu, renameTrackId, "Cambiar nombre de la pista", "F2", hasTrack);
             addItem (menu, moveTrackUpId, "Subir pista", "Alt+Arriba", hasTrack);
             addItem (menu, moveTrackDownId, "Bajar pista", "Alt+Abajo", hasTrack);
+            addItem (menu, copyTrackId, "Copiar pista", "Ctrl+C", hasTrack);
+            addItem (menu, cutTrackId, "Cortar pista", "Ctrl+X", hasTrack);
+            addItem (menu, pasteTrackId, "Pegar pista debajo", "Ctrl+V", trackClipboard != nullptr);
             addItem (menu, deleteTrackId, "Eliminar pista seleccionada", "Ctrl+Supr", hasTrack);
             break;
         }
@@ -328,6 +346,9 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case zoomOutId:             trackList.zoomOut(); break;
         case zoomFitId:             trackList.zoomToFit(); break;
         case undoId:                undo(); break;
+        case copyTrackId:           copyTrack (trackList.getSelectedTrack()); break;
+        case cutTrackId:            cutTrack (trackList.getSelectedTrack()); break;
+        case pasteTrackId:          pasteTrack(); break;
         case redoId:                redo(); break;
         default:                    break;
     }
@@ -576,23 +597,109 @@ void MainComponent::removeTrack (AudioTrack& track)
                                         }));
 }
 
+int MainComponent::indexBelowSelectedTrack() const
+{
+    const auto& tracks = engine.getMixer().getTracks();
+    const auto selectedTrack = trackList.getSelectedTrack();
+
+    for (size_t i = 0; i < tracks.size(); ++i)
+        if (tracks[i] == selectedTrack)
+            return static_cast<int> (i) + 1;
+
+    return -1;
+}
+
 void MainComponent::addTrack (int insertIndex)
 {
     // Sin posición (Ctrl+T, menú): justo debajo de la pista seleccionada.
     if (insertIndex < 0)
-    {
-        const auto& tracks = engine.getMixer().getTracks();
-        const auto selectedTrack = trackList.getSelectedTrack();
-
-        for (size_t i = 0; i < tracks.size(); ++i)
-            if (tracks[i] == selectedTrack)
-                insertIndex = static_cast<int> (i) + 1;
-    }
+        insertIndex = indexBelowSelectedTrack();
 
     const auto track = projects.addEmptyTrack ("Pista", insertIndex);
     trackList.refresh();
     trackList.selectTrack (track);
-    statusBar.setMessage ("Pista añadida y seleccionada: pulsa R o el botón rojo para grabar en ella."_u8);
+    statusBar.setMessage ("Pista añadida y seleccionada: pulsa R o el botón rojo para grabar en ella (Ctrl+Z la quita)."_u8);
+}
+
+//==============================================================================
+void MainComponent::copySelection()
+{
+    if (trackList.getSelectedClipId() != 0)
+        copySelectedClip();
+    else if (const auto track = trackList.getSelectedTrack())
+        copyTrack (track);
+    else
+        statusBar.setMessage ("Selecciona un fragmento o una pista (clic en su cabecera) para copiarlo.");
+}
+
+void MainComponent::cutSelection()
+{
+    if (trackList.getSelectedClipId() != 0)
+        cutSelectedClip();
+    else if (const auto track = trackList.getSelectedTrack())
+        cutTrack (track);
+    else
+        statusBar.setMessage ("Selecciona un fragmento o una pista (clic en su cabecera) para cortarlo.");
+}
+
+void MainComponent::paste()
+{
+    // Se pega lo último que se copió: una pista o un fragmento.
+    if (trackClipboard != nullptr)
+        pasteTrack();
+    else
+        pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition());
+}
+
+void MainComponent::copyTrack (const std::shared_ptr<AudioTrack>& track)
+{
+    if (track == nullptr)
+    {
+        statusBar.setMessage ("Selecciona la pista que quieres copiar.");
+        return;
+    }
+
+    // Una copia en el momento de copiar: lo que se edite después en la pista
+    // original no cambia lo que se pegará.
+    trackClipboard = track->createCopy (track->getName());
+    clipboard.reset();
+    statusBar.setMessage ("Pista \"" + track->getName() + "\" copiada. Ctrl+V la pega debajo de la pista seleccionada.");
+}
+
+void MainComponent::cutTrack (const std::shared_ptr<AudioTrack>& track)
+{
+    if (track == nullptr)
+    {
+        statusBar.setMessage ("Selecciona la pista que quieres cortar.");
+        return;
+    }
+
+    if (engine.isRecording() && track->isArmed())
+    {
+        showError ("Cortar pista", "No se puede cortar la pista mientras se graba en ella."_u8);
+        return;
+    }
+
+    copyTrack (track);
+    projects.removeTrack (*track, "Cortar pista");
+    statusBar.setMessage ("Pista \"" + track->getName() + "\" cortada. Ctrl+V la pega; Ctrl+Z la devuelve a su sitio.");
+}
+
+void MainComponent::pasteTrack (int insertIndex)
+{
+    if (trackClipboard == nullptr)
+    {
+        statusBar.setMessage ("No hay ninguna pista copiada.");
+        return;
+    }
+
+    if (insertIndex < 0)
+        insertIndex = indexBelowSelectedTrack();
+
+    const auto track = projects.pasteTrack (*trackClipboard, insertIndex);
+    trackList.refresh();
+    trackList.selectTrack (track);
+    statusBar.setMessage ("Pista pegada: \"" + track->getName() + "\".");
 }
 
 //==============================================================================
@@ -693,6 +800,7 @@ void MainComponent::copySelectedClip()
     if (const auto* clip = ClipEditing::find (clips, trackList.getSelectedClipId()))
     {
         clipboard = *clip;
+        trackClipboard.reset();
         statusBar.setMessage ("Fragmento copiado. Ctrl+V lo pega en el cabezal.");
     }
 }
@@ -709,6 +817,7 @@ void MainComponent::cutSelectedClip()
     if (const auto* clip = ClipEditing::find (clips, trackList.getSelectedClipId()))
     {
         clipboard = *clip;
+        trackClipboard.reset();
         ClipEditing::remove (clips, clip->id);
         projects.editClips (track, std::move (clips), "Cortar fragmento");
         trackList.selectClip (track, 0);
@@ -959,7 +1068,7 @@ void MainComponent::separationFinished (const SeparationResult& result, std::sha
 
         safe->statusBar.setMessage ("Separación completada: "_u8 + juce::String (numStems)
                                     + " pistas. La pista original se ha silenciado.");
-    });
+    }, "Separar instrumentos");
 }
 
 void MainComponent::showAbout()

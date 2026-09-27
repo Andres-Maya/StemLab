@@ -30,7 +30,8 @@ namespace
         AudioEngine engine;     // sin dispositivo: 44,1 kHz
         ProjectManager projects (engine);
         const auto track = projects.addEmptyTrack ("Pista");
-        CHECK (! projects.canUndo() && ! projects.canRedo(), "proyecto nuevo: historial vacío");
+        CHECK (projects.canUndo() && projects.getUndoDescription() == "Añadir pista"_u8 && ! projects.canRedo(),
+               "añadir una pista es el primer paso del historial");
 
         // Añadir un fragmento de 1 s (como Pegar).
         const auto clip = makeClip (makeSource (44100, 0.25f, false, 44100.0), 0);
@@ -79,8 +80,7 @@ namespace
         projects.undo();
         projects.undo();
         CHECK (track->getClips().empty(), "deshacer varias veces vuelve al principio (pista vacía)");
-        CHECK (! projects.canUndo(), "no queda nada que deshacer");
-        CHECK (! projects.undo(), "undo() sin historial devuelve false");
+        CHECK (projects.getUndoDescription() == "Añadir pista"_u8, "solo queda deshacer la creación de la pista");
 
         section ("Deshacer: eliminar pista y cambios sin guardar");
 
@@ -101,8 +101,10 @@ namespace
                "deshacer devuelve la pista a su posición, con sus fragmentos");
         CHECK (! projects.hasUnsavedChanges(), "tras deshacer, el proyecto vuelve a estar como se guardó");
 
+        projects.undo();                              // la creación de "other"
         projects.undo();                              // el fragmento de antes también se deshace
-        CHECK (track->getClips().empty(), "el historial anterior a la eliminación sigue funcionando");
+        CHECK (track->getClips().empty() && tracks.size() == 1, "el historial anterior a la eliminación sigue funcionando");
+        projects.redo();
         projects.redo();
         projects.redo();
         CHECK (tracks.size() == 1 && tracks.front() == other, "rehacer vuelve a eliminar la pista");

@@ -51,46 +51,115 @@ namespace
         std::vector<AudioClip> before, after;
     };
 
-    /** Eliminar una pista. La acción conserva la pista (con sus clips, volumen
-        y efectos) para poder devolverla a su sitio al deshacer. */
-    class RemoveTrackAction final : public juce::UndoableAction
+    int indexOfTrack (const AudioMixer& mixer, const AudioTrack* track)
+    {
+        const auto& tracks = mixer.getTracks();
+
+        for (size_t i = 0; i < tracks.size(); ++i)
+            if (tracks[i].get() == track)
+                return static_cast<int> (i);
+
+        return -1;
+    }
+
+    /** Poner o quitar una pista del proyecto. La acción conserva la pista (con
+        sus clips, volumen y efectos) para devolverla a su sitio. */
+    class TrackPresenceAction final : public juce::UndoableAction
     {
     public:
-        RemoveTrackAction (AudioMixer& m, std::function<void()> changed, std::shared_ptr<AudioTrack> t)
-            : mixer (m), onChanged (std::move (changed)), track (std::move (t))
+        enum class Kind { add, remove };
+
+        TrackPresenceAction (Kind k, AudioMixer& m, std::function<void()> changed,
+                             std::shared_ptr<AudioTrack> t, int insertIndex = -1)
+            : kind (k), mixer (m), onChanged (std::move (changed)), track (std::move (t)), index (insertIndex)
         {
         }
 
-        bool perform() override
-        {
-            const auto& tracks = mixer.getTracks();
-            const auto it = std::find (tracks.begin(), tracks.end(), track);
+        bool perform() override     { return kind == Kind::add ? insert() : remove(); }
+        bool undo() override        { return kind == Kind::add ? remove() : insert(); }
 
-            if (it == tracks.end())
+    private:
+        bool insert()
+        {
+            if (containsTrack (mixer, track.get()))
                 return false;
 
-            index = static_cast<int> (std::distance (tracks.begin(), it));
+            const auto size = static_cast<int> (mixer.getTracks().size());
+            mixer.addTrack (track, index < 0 ? size : juce::jmin (index, size));
+            onChanged();
+            return true;
+        }
+
+        bool remove()
+        {
+            index = indexOfTrack (mixer, track.get());
+
+            if (index < 0)
+                return false;
+
             track->setArmed (false);
             mixer.removeTrack (track.get());
             onChanged();
             return true;
         }
 
-        bool undo() override
+        Kind kind;
+        AudioMixer& mixer;
+        std::function<void()> onChanged;
+        std::shared_ptr<AudioTrack> track;
+        int index;
+    };
+
+    /** Cambiar una pista de posición (el orden es solo visual). */
+    class MoveTrackAction final : public juce::UndoableAction
+    {
+    public:
+        MoveTrackAction (AudioMixer& m, std::function<void()> changed, std::shared_ptr<AudioTrack> t, int from, int to)
+            : mixer (m), onChanged (std::move (changed)), track (std::move (t)), fromIndex (from), toIndex (to)
         {
-            if (containsTrack (mixer, track.get()))
+        }
+
+        bool perform() override     { return moveTo (toIndex); }
+        bool undo() override        { return moveTo (fromIndex); }
+
+    private:
+        bool moveTo (int newIndex)
+        {
+            const auto current = indexOfTrack (mixer, track.get());
+
+            if (current < 0)
                 return false;
 
-            mixer.addTrack (track, juce::jmin (index, static_cast<int> (mixer.getTracks().size())));
+            // Al anotar un arrastre, la pista ya está en su sitio: no se mueve.
+            if (current != newIndex)
+                mixer.moveTrack (current, newIndex);
+
             onChanged();
             return true;
         }
 
-    private:
         AudioMixer& mixer;
         std::function<void()> onChanged;
         std::shared_ptr<AudioTrack> track;
-        int index = 0;
+        int fromIndex, toIndex;
+    };
+
+    /** Cambiar el nombre de una pista. */
+    class RenameTrackAction final : public juce::UndoableAction
+    {
+    public:
+        RenameTrackAction (std::function<void()> changed, std::shared_ptr<AudioTrack> t, juce::String before, juce::String after)
+            : onChanged (std::move (changed)), track (std::move (t)), oldName (std::move (before)), newName (std::move (after))
+        {
+        }
+
+        bool perform() override     { track->setName (newName); onChanged(); return true; }
+        bool undo() override        { track->setName (oldName); onChanged(); return true; }
+
+    private:
+        std::function<void()> onChanged;
+        std::shared_ptr<AudioTrack> track;
+        juce::String oldName, newName;
     };
 }
 
@@ -271,10 +340,10 @@ void ProjectManager::importAudio (const juce::Array<juce::File>& files, Callback
     for (const auto& file : files)
         tracks.push_back ({ file.getFileNameWithoutExtension(), file, 0.0, true });
 
-    addTracks (std::move (tracks), std::move (onDone));
+    addTracks (std::move (tracks), std::move (onDone), "Importar audio");
 }
 
-void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone)
+void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone, const juce::String& undoName)
 {
     std::vector<TrackRequest> requests;
 
@@ -283,6 +352,7 @@ void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone)
         TrackRequest request;
         request.name = track.name;
         request.copyIntoProject = track.copyIntoProject;
+        request.undoName = undoName;
         request.clips.push_back ({ track.file, track.startSeconds, 0.0, -1.0 });
         requests.push_back (std::move (request));
     }
@@ -293,12 +363,22 @@ void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone)
 std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName, int insertIndex)
 {
     auto track = std::make_shared<AudioTrack> (createTrackName (baseName));
-    engine.getMixer().addTrack (track, insertIndex);
-    sendChangeMessage();
+    performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::add, engine.getMixer(),
+                                                            [this] { notifyTracksEdited(); }, track, insertIndex),
+                     "Añadir pista"_u8);
     return track;
 }
 
-void ProjectManager::removeTrack (const AudioTrack& track)
+std::shared_ptr<AudioTrack> ProjectManager::pasteTrack (const AudioTrack& copyFrom, int insertIndex)
+{
+    auto track = copyFrom.createCopy (createCopyName (copyFrom.getName()));
+    performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::add, engine.getMixer(),
+                                                            [this] { notifyTracksEdited(); }, track, insertIndex),
+                     "Pegar pista");
+    return track;
+}
+
+void ProjectManager::removeTrack (const AudioTrack& track, const juce::String& actionName)
 {
     // La pista queda guardada en el historial (en el hilo de mensajes) para
     // poder recuperarla. Los archivos de audio se conservan en disco.
@@ -306,11 +386,28 @@ void ProjectManager::removeTrack (const AudioTrack& track)
     {
         if (t.get() == &track)
         {
-            performUndoable (std::make_unique<RemoveTrackAction> (engine.getMixer(), [this] { notifyTracksEdited(); }, t),
-                             "Eliminar pista");
+            performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::remove, engine.getMixer(),
+                                                                    [this] { notifyTracksEdited(); }, t),
+                             actionName);
             return;
         }
     }
+}
+
+void ProjectManager::trackMoved (const std::shared_ptr<AudioTrack>& track, int fromIndex, int toIndex)
+{
+    if (track != nullptr && fromIndex != toIndex)
+        performUndoable (std::make_unique<MoveTrackAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
+                                                            track, fromIndex, toIndex),
+                         "Mover pista");
+}
+
+void ProjectManager::trackRenamed (const std::shared_ptr<AudioTrack>& track, const juce::String& oldName)
+{
+    if (track != nullptr && track->getName() != oldName)
+        performUndoable (std::make_unique<RenameTrackAction> ([this] { notifyTracksEdited(); }, track,
+                                                              oldName, track->getName()),
+                         "Cambiar nombre de la pista");
 }
 
 std::shared_ptr<AudioTrack> ProjectManager::getArmedTrack() const
@@ -418,6 +515,26 @@ juce::String ProjectManager::createTrackName (const juce::String& baseName) cons
     }
 }
 
+juce::String ProjectManager::createCopyName (const juce::String& name) const
+{
+    const auto& tracks = engine.getMixer().getTracks();
+    const auto isTaken = [&] (const juce::String& candidate)
+    {
+        return std::any_of (tracks.begin(), tracks.end(), [&] (const auto& t) { return t->getName() == candidate; });
+    };
+
+    if (! isTaken (name))
+        return name;
+
+    for (int number = 1;; ++number)
+    {
+        const auto candidate = name + (number == 1 ? juce::String (" (copia)") : " (copia " + juce::String (number) + ")");
+
+        if (! isTaken (candidate))
+            return candidate;
+    }
+}
+
 juce::File ProjectManager::createRecordingFile() const
 {
     return project.getRecordingsDirectory().getNonexistentChildFile ("Grabacion", ".wav", false);
@@ -520,6 +637,7 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
     }
 
     auto& mixer = engine.getMixer();
+    auto startedTransaction = false;
 
     for (const auto& request : requests)
     {
@@ -587,7 +705,21 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
             for (const auto& other : tracks)
                 other->setArmed (false);
 
-        mixer.addTrack (std::move (track));
+        // Importar o separar: todas las pistas de esta carga son un solo paso
+        // del historial. Abrir o recargar un proyecto no entra en él.
+        if (request.undoName.isNotEmpty())
+        {
+            if (! startedTransaction)
+                undoManager.beginNewTransaction (request.undoName);
+
+            startedTransaction = true;
+            undoManager.perform (new TrackPresenceAction (TrackPresenceAction::Kind::add, mixer,
+                                                          [this] { notifyTracksEdited(); }, std::move (track)));
+        }
+        else
+        {
+            mixer.addTrack (std::move (track));
+        }
     }
 
     mixer.updateContentLength();

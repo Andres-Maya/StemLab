@@ -16,6 +16,8 @@ namespace stemlab
 /**
     Fila de una pista:  [nombre · M · S · × · volumen · paneo · medidor] [clips]
 
+    - Clic en la cabecera: selecciona la pista entera (sin fragmento), así
+      Ctrl+C / Ctrl+X copian o cortan la pista.
     - Arrastrar la cabecera (nombre o zona vacía) arriba/abajo: mueve la pista.
     - Doble clic en el nombre (o F2): cambiar el nombre.
     - Clic derecho en la cabecera: menú de la pista.
@@ -47,8 +49,9 @@ public:
     void startRename();
 
     std::function<void (TrackView&)> onSelect;
+    std::function<void (TrackView&)> onHeaderClicked;
     std::function<void (TrackView&)> onDelete;
-    std::function<void (TrackView&)> onRenamed;
+    std::function<void (TrackView&, const juce::String& oldName)> onRenamed;
     std::function<void (TrackView&)> onHeaderMenu;
     std::function<void (double seconds)> onSeek;
     std::function<void (TrackView&, juce::uint32 clipId)> onClipClicked;

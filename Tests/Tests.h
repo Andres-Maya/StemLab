@@ -10,6 +10,10 @@ void runUnitTests();
 /** Deshacer/rehacer, grabar encima de audio y clic sobre un clip (EditingTests.cpp). */
 void runEditingTests();
 
+/** Pistas: deshacer añadir/eliminar/mover/renombrar/importar y copiar/pegar
+    pistas, también con las teclas de la ventana (TrackTests.cpp). */
+void runTrackTests();
+
 /** Exportar la mezcla a WAV (ExportTests.cpp). */
 void runExportTests();
 

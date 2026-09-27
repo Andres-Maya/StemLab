@@ -35,10 +35,15 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
             return;
         }
 
+        const auto oldName = track->getName();
+
+        if (newName == oldName)
+            return;
+
         track->setName (newName);
 
         if (onRenamed != nullptr)
-            onRenamed (*this);
+            onRenamed (*this, oldName);
     };
 
     // La fila recibe también los clics sobre el nombre: así se puede arrastrar
@@ -173,8 +178,8 @@ void TrackView::resized()
 //==============================================================================
 void TrackView::mouseDown (const juce::MouseEvent& event)
 {
-    if (onSelect != nullptr)
-        onSelect (*this);
+    if (onHeaderClicked != nullptr)
+        onHeaderClicked (*this);
 
     if (event.mods.isPopupMenu())
     {

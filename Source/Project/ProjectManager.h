@@ -55,14 +55,30 @@ public:
     // Pistas
     bool canImport (const juce::File& file) const;
     void importAudio (const juce::Array<juce::File>& files, Callback onDone);
-    void addTracks (std::vector<NewTrack> tracks, Callback onDone);
+
+    /** Carga los archivos como pistas nuevas. Al terminar, todas juntas son un
+        solo paso del historial (undoName: "Importar audio", "Separar instrumentos"...). */
+    void addTracks (std::vector<NewTrack> tracks, Callback onDone,
+                    const juce::String& undoName = juce::String::fromUTF8 ("Añadir pistas"));
+
+    // Todas estas operaciones con pistas se pueden deshacer (Ctrl+Z).
 
     /** Crea una pista vacía (por ejemplo, para grabar en ella) en la posición
         indicada, o al final si insertIndex < 0. */
     std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName, int insertIndex = -1);
 
-    /** Quita la pista del proyecto (se puede deshacer con Ctrl+Z). */
-    void removeTrack (const AudioTrack& track);
+    /** Inserta una copia de la pista (Pegar pista) en la posición indicada, o
+        al final si insertIndex < 0. Si el nombre ya existe se añade "(copia)". */
+    std::shared_ptr<AudioTrack> pasteTrack (const AudioTrack& copyFrom, int insertIndex = -1);
+
+    /** Quita la pista del proyecto. */
+    void removeTrack (const AudioTrack& track, const juce::String& actionName = "Eliminar pista");
+
+    /** Anota un cambio de orden que ya se aplicó en el mezclador (arrastrar la cabecera). */
+    void trackMoved (const std::shared_ptr<AudioTrack>& track, int fromIndex, int toIndex);
+
+    /** Anota un cambio de nombre que ya se aplicó a la pista. */
+    void trackRenamed (const std::shared_ptr<AudioTrack>& track, const juce::String& oldName);
 
     /** Pista en la que se está grabando (solo una; resalta su franja y la vista
         previa en directo). */
@@ -97,6 +113,9 @@ public:
     bool redo();
 
     juce::String createTrackName (const juce::String& baseName) const;
+
+    /** El nombre tal cual si está libre; si no, "nombre (copia)", "nombre (copia 2)"... */
+    juce::String createCopyName (const juce::String& name) const;
     juce::File createRecordingFile() const;
     juce::File createStemsFolderFor (const AudioTrack& track) const;
 
@@ -118,6 +137,7 @@ private:
         bool keepIfEmpty = false;           // proyecto abierto: conservar la pista aunque falte el audio
         bool copyIntoProject = false;
         bool armed = false;
+        juce::String undoName;              // vacío: no entra en el historial (abrir, recargar)
     };
 
     using SourceMap = std::map<juce::String, std::shared_ptr<ClipSource>>;

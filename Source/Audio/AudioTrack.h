@@ -46,6 +46,10 @@ public:
     juce::var getState() const;
     void applyState (const juce::var& state);
 
+    /** Pista nueva con los mismos clips (con ids nuevos; el audio se comparte),
+        volumen, paneo, mute, solo y efectos. No copia el estado de grabación. */
+    std::shared_ptr<AudioTrack> createCopy (const juce::String& newName) const;
+
     //==========================================================================
     // Clips (hilo de mensajes). Los clips posteriores suenan por encima de los
     // anteriores donde se solapan.

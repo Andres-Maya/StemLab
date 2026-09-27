@@ -46,6 +46,19 @@ void AudioTrack::applyState (const juce::var& state)
     effects.fromVar (state.getProperty ("effects", {}));
 }
 
+std::shared_ptr<AudioTrack> AudioTrack::createCopy (const juce::String& newName) const
+{
+    auto copy = std::make_shared<AudioTrack> (newName);
+    auto copiedClips = getClips();
+
+    for (auto& clip : copiedClips)
+        clip.id = AudioClip::createId();
+
+    copy->setClips (std::move (copiedClips));
+    copy->applyState (getState());
+    return copy;
+}
+
 //==============================================================================
 std::vector<AudioClip> AudioTrack::getClips() const
 {

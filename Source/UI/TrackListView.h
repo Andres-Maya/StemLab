@@ -58,9 +58,16 @@ public:
     std::function<void (std::shared_ptr<AudioTrack>, juce::uint32 clipId, double seconds)> onContextMenu;
     /** Un clip se movió o recortó con el ratón (ya aplicado a la pista). */
     std::function<void (std::shared_ptr<AudioTrack>, std::vector<AudioClip> clipsBefore, const juce::String& actionName)> onClipsEdited;
-    std::function<void()> onTracksReordered;
-    std::function<void (AudioTrack&)> onTrackRenamed;
+    /** La pista ya se movió en el mezclador (arrastre, Alt+flechas o menú). */
+    std::function<void (std::shared_ptr<AudioTrack>, int fromIndex, int toIndex)> onTracksReordered;
+    std::function<void (std::shared_ptr<AudioTrack>, const juce::String& oldName)> onTrackRenamed;
     std::function<void (int insertIndex)> onAddTrack;       // -1 = al final
+
+    // Menú de la cabecera: copiar, cortar y pegar pistas.
+    std::function<void (std::shared_ptr<AudioTrack>)> onCopyTrack;
+    std::function<void (std::shared_ptr<AudioTrack>)> onCutTrack;
+    std::function<void (int insertIndex)> onPasteTrack;
+    std::function<bool()> canPasteTrack;
 
     void paint (juce::Graphics&) override;
     void resized() override;

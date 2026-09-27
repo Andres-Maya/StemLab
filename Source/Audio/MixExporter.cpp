@@ -68,12 +68,7 @@ MixExporter::MixExporter (const AudioMixer& source, double rate)
     // tienen su propio estado, así que el render no interfiere con lo que
     // suena en el dispositivo.
     for (const auto& original : source.getTracks())
-    {
-        auto copy = std::make_shared<AudioTrack> (original->getName());
-        copy->setClips (original->getClips());
-        copy->applyState (original->getState());
-        mixer.addTrack (std::move (copy));
-    }
+        mixer.addTrack (original->createCopy (original->getName()));
 
     mixer.getMasterVolume().set (source.getMasterVolume().get());
     mixer.prepare (sampleRate, renderBlockSize);
@@ -316,7 +311,7 @@ juce::Result MixExporter::encodeMp3 (const juce::File& wav, const juce::File& mp
                                    + logTail.joinIntoString ("\n"));
 
     if (! mp3.existsAsFile() || mp3.getSize() == 0)
-        return juce::Result::fail ("El codificador no generó el MP3.");
+        return juce::Result::fail ("El codificador no generó el MP3."_u8);
 
     return juce::Result::ok();
 }
