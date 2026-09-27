@@ -9,6 +9,7 @@ target_sources(StemLabTests PRIVATE
     UnitTests.cpp
     EditingTests.cpp
     TrackTests.cpp
+    ProjectFileTests.cpp
     ExportTests.cpp
     UiTests.cpp
     DeviceTests.cpp

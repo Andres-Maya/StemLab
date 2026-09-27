@@ -41,6 +41,7 @@ int main (int argc, char** argv)
         runUnitTests();
         runEditingTests();
         runTrackTests();
+        runProjectFileTests();
         runExportTests();
         runUiTests();
 
