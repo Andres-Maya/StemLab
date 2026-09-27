@@ -35,7 +35,7 @@ Source/
                 WaveformView · TimeRuler · MixerView · EffectPanel · ExportDialog ...
   Utils/        Parameter (valor atómico UI ↔ audio) · PythonEnvironment · Strings
 Resources/
-  StemLab.png · StemLabSmall.png    icono de la aplicación (logo completo; solo el emblema en 16-48 px)
+  StemLab.png · StemLabSmall.png    icono de la aplicación (256 px y 48 px para 16-48 px)
   StemLab.ico                       icono de los archivos .stemlab (16 a 256 px)
 python/
   stemlab_separate.py               Demucs: carga, preprocesado, inferencia, stems
