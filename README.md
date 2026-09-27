@@ -160,8 +160,13 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - **Clic** en un fragmento lo selecciona. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
    - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
    - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
-6. **Pistas:** el **+** en un círculo, debajo de la última pista (o arriba del todo si no hay ninguna), añade una pista vacía debajo. La **×** de cada pista la elimina, tras pedir confirmación.
-7. **Archivo → Guardar proyecto como…**
+6. **Pistas:** el **+** en un círculo, pegado al borde inferior de una pista, añade una pista vacía justo debajo de ella. Se ve en la última pista y en la pista sobre la que pasa el ratón; si no hay pistas, aparece arriba del todo. La **×** de cada pista la elimina, tras pedir confirmación.
+7. **Zoom y desplazamiento:**
+   - **Ctrl + rueda** acerca o aleja alrededor del ratón.
+   - **Shift + rueda**, o la rueda horizontal del touchpad, desplaza a los lados. También sirve la barra inferior.
+   - Los botones **-**, **+** y **Ajustar** están arriba a la izquierda y en **Proyecto → Vista**.
+   - Durante la reproducción, la vista sigue al cabezal.
+8. **Archivo → Guardar proyecto como…**
 
 Atajos de teclado:
 
@@ -187,7 +192,6 @@ Atajos de teclado:
 - **Pendiente**:
   - Exportar la mezcla a WAV con un render offline en `exports/`.
   - `SpectrogramView` con FFT.
-  - Zoom y desplazamiento de la línea de tiempo.
   - Deshacer/rehacer la edición de fragmentos con `UndoManager`.
   - Arrastrar fragmentos entre pistas y ajuste a la rejilla de compases (BPM).
   - Reverb, Delay, Pitch Shift y Time Stretching.
