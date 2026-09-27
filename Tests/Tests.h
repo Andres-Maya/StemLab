@@ -14,6 +14,9 @@ void runEditingTests();
     pistas, también con las teclas de la ventana (TrackTests.cpp). */
 void runTrackTests();
 
+/** Archivos .stemlab: guardar, abrir, proyectos antiguos y "Abrir reciente" (ProjectFileTests.cpp). */
+void runProjectFileTests();
+
 /** Exportar la mezcla a WAV (ExportTests.cpp). */
 void runExportTests();
 
