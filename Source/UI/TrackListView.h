@@ -110,6 +110,8 @@ private:
 
         std::vector<float> peaks;                  // un pico por bin de AudioRecorder::previewBinSize
         std::optional<juce::int64> startSample;    // posición final del clip (puede ser negativa)
+        juce::int64 freeStart = 0;                 // hueco libre de la pista: la toma se recorta a él
+        juce::int64 freeEnd = std::numeric_limits<juce::int64>::max();
         double sampleRate = 48000.0;
         double visibleStart = 0.0;
         double visibleLength = 60.0;

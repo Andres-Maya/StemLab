@@ -64,6 +64,8 @@ private:
     void importAudio();
     void exportMix();
     void deleteSelectedTrack();
+    /** Supr / Retroceso: el fragmento seleccionado o, si no hay, la pista. */
+    void deleteSelection();
     void removeTrack (AudioTrack& track);
     /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
     void addTrack (int insertIndex = -1);

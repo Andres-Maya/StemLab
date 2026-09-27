@@ -6,6 +6,8 @@
 #include "UI/WaveformView.h"
 #include "Utils/Strings.h"
 
+#include <limits>
+
 // Edición de fragmentos: deshacer/rehacer, grabar encima de audio ya grabado
 // y colocar el cabezal con un clic sobre un clip.
 
@@ -114,53 +116,95 @@ namespace
         folder.deleteRecursively();
     }
 
-    void testRecordOverExistingAudio()
+    void testFreeSpaceHelpers()
     {
-        section ("Grabar encima de audio ya grabado en la misma pista");
+        section ("Fragmentos sin solaparse: buscar hueco libre");
+
+        const auto source = makeSource (1000, 0.1f);
+        const std::vector<AudioClip> clips { makeClip (source, 0, 0, 100), makeClip (source, 100, 0, 100), makeClip (source, 300, 0, 100) };
+
+        CHECK (ClipEditing::findFreeSpace (clips, 50, 50) == 200, "sobre audio: justo después de los fragmentos seguidos (200)");
+        CHECK (ClipEditing::findFreeSpace (clips, 50, 150) == 400, "si no cabe en el hueco, al siguiente donde quepa (400)");
+        CHECK (ClipEditing::findFreeSpace (clips, 250, 50) == 250, "en un hueco donde cabe: se queda en el cabezal");
+        CHECK (ClipEditing::findFreeSpace (clips, 200, 100) == 200, "cabe justo hasta el siguiente fragmento (200..300)");
+
+        const auto gap = ClipEditing::freeGapAt (clips, 150);
+        CHECK (gap.first == 200 && gap.second == 300, "hueco libre desde el cabezal: [200, 300)");
+
+        const auto around = ClipEditing::freeRangeAround (clips, clips[2]);
+        CHECK (around.first == 200 && around.second == std::numeric_limits<juce::int64>::max(), "límites del último fragmento: desde 200");
+
+        auto take = makeClip (source, 180, 0, 200);          // 180..380: pisa el final de [100,200) y el principio de [300,400)
+        CHECK (ClipEditing::fitIntoFreeSpace (clips, take) && take.timelineStart == 200 && take.getEnd() == 300 && take.sourceOffset == 20,
+               "una toma se recorta al hueco: empieza en 200 (desplazando su audio) y acaba en 300");
+
+        auto inside = makeClip (source, 20, 0, 50);           // dentro de audio ya grabado
+        CHECK (! ClipEditing::fitIntoFreeSpace (clips, inside), "una toma que cae entera sobre audio no se añade");
+    }
+
+    void testRecordAfterExistingAudio()
+    {
+        section ("Grabar en una pista con audio: la toma va a continuación, nunca encima");
 
         AudioEngine engine;     // 44,1 kHz sin dispositivo
         ProjectManager projects (engine);
         const auto rate = engine.getSampleRate();
+        const auto seconds = [rate] (double s) { return (juce::int64) (s * rate); };
+        const auto& tracks = engine.getMixer().getTracks();
 
         // Primera toma: 3 s de valor 0,25 desde el principio.
         const auto target = projects.addEmptyTrack ("Grabación"_u8);
-        const auto first = writeConstantWav (projects.getProject().getRecordingsDirectory().getChildFile ("Toma1.wav"),
-                                             rate, 3.0, 0.25f);
-        bool done = false;
-        projects.addRecording ({ first, 0, 0, rate }, target, [&] (juce::Result) { done = true; });
-        runLoopUntil ([&] { return done; }, 10000);
-        CHECK (done && target->getClips().size() == 1, "primera toma en la pista");
-
-        // Segunda toma sobre el mismo tramo: el cabezal se colocó en 1 s (encima del audio dibujado).
-        const auto second = writeConstantWav (projects.getProject().getRecordingsDirectory().getChildFile ("Toma2.wav"),
-                                              rate, 1.0, 0.5f);
-        done = false;
-        projects.addRecording ({ second, (juce::int64) rate, 0, rate }, target, [&] (juce::Result) { done = true; });
-        runLoopUntil ([&] { return done; }, 10000);
-
-        const auto clips = target->getClips();
-        CHECK (done && engine.getMixer().getTracks().size() == 1 && clips.size() == 2,
-               "la segunda toma va a la misma pista (no crea otra)");
-
-        if (clips.size() == 2)
+        const auto recordings = projects.getProject().getRecordingsDirectory();
+        const auto record = [&] (const juce::String& name, juce::int64 start, double length, float value, int latency)
         {
-            CHECK (clips[1].timelineStart == (juce::int64) rate && clips[1].length == (juce::int64) rate,
-                   "la toma nueva empieza donde estaba el cabezal, sobre el audio existente");
-            CHECK (clips.back().source->file == second, "la toma nueva queda la última: se dibuja y suena encima");
-        }
+            auto done = false;
+            const auto file = writeConstantWav (recordings.getChildFile (name), rate, length, value);
+            projects.addRecording ({ file, start, latency, rate }, target, [&] (juce::Result) { done = true; });
+            runLoopUntil ([&] { return done; }, 10000);
+            return done;
+        };
+
+        CHECK (record ("Toma1.wav", 0, 3.0, 0.25f, 0) && target->getClips().size() == 1, "primera toma en la pista");
+
+        // El cabezal está en 1 s, sobre la toma: la grabación empieza en su final (como hace MainComponent).
+        const auto start = ClipEditing::findFreeSpace (target->getClips(), seconds (1.0), 1);
+        CHECK (start == seconds (3.0), "con el cabezal sobre audio, la grabación empieza al final de ese audio (3 s)");
+
+        // La latencia adelanta la toma 441 muestras: se recorta para no pisar la anterior.
+        CHECK (record ("Toma2.wav", start, 1.0, 0.5f, 441), "segunda toma grabada");
+        auto clips = target->getClips();
+        CHECK (tracks.size() == 1 && clips.size() == 2 && clips[1].timelineStart == seconds (3.0) && clips[1].sourceOffset == 441,
+               "va a la misma pista, justo después de la primera (sin solaparse)");
 
         AudioMixer& mixer = engine.getMixer();
         mixer.prepare (rate, 512);
-        CHECK (near (renderSpan (mixer, (juce::int64) (1.5 * rate), 1).getSample (0, 0), 0.5, 1e-3),
-               "en el tramo solapado suena la toma nueva (no la suma)");
-        CHECK (near (renderSpan (mixer, (juce::int64) (2.5 * rate), 1).getSample (0, 0), 0.25, 1e-3),
-               "después de la toma nueva vuelve la primera");
+        CHECK (near (renderSpan (mixer, seconds (1.5), 1).getSample (0, 0), 0.25, 1e-3), "la primera toma sigue sonando entera");
+        CHECK (near (renderSpan (mixer, seconds (3.5), 1).getSample (0, 0), 0.5, 1e-3), "y la segunda suena a continuación");
         CHECK (projects.getUndoDescription() == "Grabar fragmento", "grabar un fragmento se puede deshacer");
 
+        // Un fragmento más adelante (en 6 s): una toma que llegue a él se corta ahí.
+        auto withLater = target->getClips();
+        withLater.push_back (makeClip (makeSource ((int) rate, 0.1f, false, rate), seconds (6.0)));
+        projects.editClips (target, withLater, "Pegar fragmento");
+        CHECK (record ("Toma3.wav", seconds (5.5), 1.0, 0.75f, 0), "tercera toma, que llegaría al fragmento de 6 s");
+        clips = target->getClips();
+        CHECK (clips.size() == 4 && clips.back().timelineStart == seconds (5.5) && clips.back().getEnd() == seconds (6.0),
+               "se recorta al llegar al fragmento siguiente");
+
+        // Una toma que caería entera sobre audio no se añade.
+        CHECK (record ("Toma4.wav", seconds (0.5), 1.0, 0.9f, 0) && target->getClips().size() == 4,
+               "una toma entera sobre audio grabado no se añade");
+
+        // Ningún par de fragmentos se solapa.
+        clips = target->getClips();
+        auto overlaps = false;
+        for (size_t i = 0; i < clips.size(); ++i)
+            for (size_t j = i + 1; j < clips.size(); ++j)
+                overlaps = overlaps || (clips[i].timelineStart < clips[j].getEnd() && clips[j].timelineStart < clips[i].getEnd());
+        CHECK (! overlaps, "en la pista no queda ningún fragmento encima de otro");
+
         projects.undo();
-        CHECK (target->getClips().size() == 1
-                   && near (renderSpan (mixer, (juce::int64) (1.5 * rate), 1).getSample (0, 0), 0.25, 1e-3),
-               "deshacer quita la toma y vuelve a sonar la de debajo");
+        CHECK (target->getClips().size() == 3, "deshacer quita la última toma");
     }
 
     void testClickOnClipMovesPlayhead()
@@ -218,13 +262,43 @@ namespace
         waveform.mouseDown (mouseEventAt (waveform, empty, empty, false));
         waveform.mouseUp (mouseEventAt (waveform, empty, empty, false));
         CHECK (clicked == 0 && near (seekedTo, 0.5, 0.011), "clic en zona vacía: deselecciona y coloca el cabezal");
+        section ("Mover y recortar fragmentos sin pasar por encima de sus vecinos");
+
+        AudioTrack pair ("Dos");
+        const auto a = makeClip (makeSource (48000 * 5, 0.3f), 0, 0, 48000 * 2);   // [0, 2) s de un audio de 5 s
+        const auto b = makeClip (makeSource (48000 * 2, 0.3f), 48000 * 4);    // [4, 6) s
+        pair.setClips ({ a, b });
+        WaveformView lane (pair, formats, cache);
+        lane.setBounds (0, 0, 1000, 80);
+        lane.setVisibleRange (0.0, 10.0);
+
+        // Arrastrar B 4 s a la izquierda: se detiene al tocar A (2 s).
+        const juce::Point<float> bCentre (500.0f, 40.0f), farLeft (100.0f, 40.0f);
+        lane.mouseDown (mouseEventAt (lane, bCentre, bCentre, false));
+        lane.mouseDrag (mouseEventAt (lane, farLeft, bCentre, true));
+        lane.mouseUp (mouseEventAt (lane, farLeft, bCentre, true));
+        auto moved = pair.getClips();
+        CHECK (ClipEditing::find (moved, b.id)->timelineStart == 48000 * 2, "mover: se detiene al final del fragmento anterior");
+
+        // Alargar A por la derecha: B está justo detrás, no se puede.
+        auto shorter = pair.getClips();
+        ClipEditing::trimEnd (*ClipEditing::find (shorter, a.id), 48000);    // A: [0, 1) s
+        pair.setClips (shorter);
+        lane.clipsChanged();
+        const juce::Point<float> aEnd (98.0f, 40.0f), farRight (400.0f, 40.0f);
+        lane.mouseDown (mouseEventAt (lane, aEnd, aEnd, false));
+        lane.mouseDrag (mouseEventAt (lane, farRight, aEnd, true));
+        lane.mouseUp (mouseEventAt (lane, farRight, aEnd, true));
+        auto trimmed = pair.getClips();
+        CHECK (ClipEditing::find (trimmed, a.id)->getEnd() == 48000 * 2, "recortar: el borde se detiene al principio del siguiente");
     }
 }
 
 void runEditingTests()
 {
     testUndoRedo();
-    testRecordOverExistingAudio();
+    testFreeSpaceHelpers();
+    testRecordAfterExistingAudio();
     testClickOnClipMovesPlayhead();
 }
 }
