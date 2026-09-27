@@ -5,11 +5,30 @@
 #include "AI/DemucsSeparator.h"
 #include "Audio/AudioEngine.h"
 #include "Project/ProjectManager.h"
+#include "Project/Project.h"
 #include "UI/MainWindow.h"
 #include "UI/StemLabLookAndFeel.h"
 
 namespace stemlab
 {
+namespace
+{
+    /** El proyecto que llega por la línea de comandos: al abrir un .stemlab
+        con StemLab ("Abrir con", arrastrarlo sobre StemLab.exe...). */
+    juce::File projectFileFromCommandLine (const juce::String& commandLine)
+    {
+        for (const auto& token : juce::StringArray::fromTokens (commandLine, true))
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (token.unquoted());
+
+            if (file.existsAsFile() && Project::isProjectFile (file))
+                return file;
+        }
+
+        return {};
+    }
+}
+
 /**
     Punto de entrada. Crea los servicios en orden (motor → proyectos → IA →
     ventana) y los destruye en orden inverso: la interfaz desaparece antes que
@@ -22,7 +41,7 @@ public:
     const juce::String getApplicationVersion() override     { return JUCE_APPLICATION_VERSION_STRING; }
     bool moreThanOneInstanceAllowed() override              { return false; }
 
-    void initialise (const juce::String&) override
+    void initialise (const juce::String& commandLine) override
     {
         juce::PropertiesFile::Options options;
         options.applicationName = "StemLab";
@@ -45,7 +64,11 @@ public:
         separator->setCurrentModel (settings.getUserSettings()->getValue ("aiModel", "htdemucs"));
         ai = std::make_unique<AIProcessManager> (std::move (separator));
 
-        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *projects, *ai);
+        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *projects, *ai,
+                                                   settings.getUserSettings());
+
+        if (const auto file = projectFileFromCommandLine (commandLine); file != juce::File())
+            mainWindow->openProjectFile (file);
 
         if (audioError.isNotEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Audio",
@@ -90,10 +113,17 @@ public:
             quit();
     }
 
-    void anotherInstanceStarted (const juce::String&) override
+    void anotherInstanceStarted (const juce::String& commandLine) override
     {
+        // Solo se permite una instancia: si se abre un .stemlab con StemLab ya
+        // abierto, se abre en esta ventana.
         if (mainWindow != nullptr)
+        {
             mainWindow->toFront (true);
+
+            if (const auto file = projectFileFromCommandLine (commandLine); file != juce::File())
+                mainWindow->openProjectFile (file);
+        }
     }
 
 private:
