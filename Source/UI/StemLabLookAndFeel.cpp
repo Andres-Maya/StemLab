@@ -19,7 +19,7 @@ juce::Colour trackColourFor (const juce::String& trackName, int index)
         { "Guitarra",  0xffff6b6b },
         { "Piano",     0xffffd43b },
         { "Otros",     0xff38d9a9 },
-        { "Grabación", 0xffe5484d },
+        { "Grabación", 0xff748ffc },     // índigo: el rojo queda solo para "grabando"
     };
 
     for (const auto& entry : named)
