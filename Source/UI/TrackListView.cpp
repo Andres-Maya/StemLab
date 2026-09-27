@@ -13,6 +13,8 @@ namespace
     constexpr int scrollBarHeight = 12;
     constexpr double minimumVisibleSeconds = 0.25;     // zoom máximo: 0,25 s a lo ancho
     constexpr double zoomStep = 1.5;
+
+    enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId };
 }
 
 void TrackListView::Content::paint (juce::Graphics& g)
@@ -25,42 +27,44 @@ void TrackListView::Content::paint (juce::Graphics& g)
         g.setFont (juce::FontOptions (16.0f));
         g.drawFittedText ("Pulsa + para añadir una pista, arrastra aquí una canción o usa Archivo > Importar audio...\n"
                           "Después, IA > Separar instrumentos. Para grabar, pulsa R."_u8,
-                          getLocalBounds().withTrimmedTop (EmptyAddButton::height).reduced (20),
+                          getLocalBounds().withTrimmedTop (AddTrackButton::height + 6).reduced (20),
                           juce::Justification::centred, 3);
     }
 }
 
 //==============================================================================
-bool TrackListView::EmptyAddButton::hitTest (int x, int y)
+juce::Point<float> TrackListView::AddTrackButton::getCircleCentre() const
 {
-    constexpr float radius = 9.0f;
-    const juce::Point<float> centre (6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius);
-    return centre.getDistanceFrom ({ static_cast<float> (x), static_cast<float> (y) }) <= radius + 3.0f;
+    // En la esquina derecha de la zona de cabeceras, centrado sobre la línea.
+    return { static_cast<float> (getWidth()) - radius - 6.0f, static_cast<float> (getHeight()) * 0.5f };
 }
 
-void TrackListView::EmptyAddButton::paint (juce::Graphics& g)
+bool TrackListView::AddTrackButton::hitTest (int x, int y)
 {
-    // Mismo estilo que el "+" de cada pista, algo más claro: sin pistas es la
-    // única forma de empezar. La línea queda en la zona de cabeceras.
-    constexpr float radius = 9.0f;
-    const juce::Point<float> centre (6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius);
-    const auto lineY = static_cast<float> (getHeight()) - 2.0f;
-    const auto lineColour = Palette::accent.withAlpha (hovered ? 1.0f : 0.8f);
+    // Solo el círculo responde al ratón; lo demás sigue siendo la pista de debajo.
+    return getCircleCentre().getDistanceFrom ({ static_cast<float> (x), static_cast<float> (y) }) <= radius + 3.0f;
+}
 
+void TrackListView::AddTrackButton::paint (juce::Graphics& g)
+{
+    const auto centre = getCircleCentre();
+    const auto lineColour = colour.withAlpha (hovered ? 1.0f : 0.7f);
+
+    // Línea del color de la pista, sin brillo, hasta el círculo.
     g.setColour (lineColour);
-    g.fillRect (centre.x, lineY, static_cast<float> (getWidth()) - centre.x, 2.0f);
+    g.fillRect (4.0f, centre.y - 1.0f, centre.x - 4.0f, 2.0f);
 
-    g.setColour (Palette::panel.interpolatedWith (Palette::accent, hovered ? 0.4f : 0.2f));
+    g.setColour (Palette::panel.interpolatedWith (colour, hovered ? 0.4f : 0.2f));
     g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
     g.setColour (lineColour);
     g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.5f);
 
-    g.setColour (Palette::text);
+    g.setColour (hovered ? Palette::text : Palette::text.withAlpha (0.85f));
     g.fillRoundedRectangle (centre.x - 4.5f, centre.y - 0.75f, 9.0f, 1.5f, 0.75f);
     g.fillRoundedRectangle (centre.x - 0.75f, centre.y - 4.5f, 1.5f, 9.0f, 0.75f);
 }
 
-void TrackListView::EmptyAddButton::mouseUp (const juce::MouseEvent& event)
+void TrackListView::AddTrackButton::mouseUp (const juce::MouseEvent& event)
 {
     if (hitTest (event.x, event.y) && onClick != nullptr)
         onClick();
@@ -143,25 +147,25 @@ void TrackListView::Playhead::paint (juce::Graphics& g)
 TrackListView::TrackListView (AudioEngine& audioEngine)
     : engine (audioEngine)
 {
-    zoomOutButton.setTooltip ("Alejar (Ctrl + rueda del ratón)"_u8);
-    zoomInButton.setTooltip ("Acercar (Ctrl + rueda del ratón; Shift + rueda para desplazarte)"_u8);
-    zoomFitButton.setTooltip ("Ver toda la canción"_u8);
-    zoomOutButton.onClick = [this] { zoomOut(); };
-    zoomInButton.onClick = [this] { zoomIn(); };
-    zoomFitButton.onClick = [this] { zoomToFit(); };
-
-    for (auto* button : { &zoomOutButton, &zoomInButton, &zoomFitButton })
-        addAndMakeVisible (*button);
-
     horizontalScroll.setAutoHide (false);
     horizontalScroll.setColour (juce::ScrollBar::thumbColourId, Palette::outline.brighter (0.4f));
     horizontalScroll.addListener (this);
     addAndMakeVisible (horizontalScroll);
 
+    emptyAddButton.colour = Palette::accent;
     emptyAddButton.setTooltip ("Añadir una pista (Ctrl+T)"_u8);
     emptyAddButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     emptyAddButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack (-1); };
     content.addAndMakeVisible (emptyAddButton);
+
+    addBelowButton.setTooltip ("Añadir una pista debajo"_u8);
+    addBelowButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    addBelowButton.onClick = [this]
+    {
+        if (onAddTrack != nullptr && addBelowRow >= 0)
+            onAddTrack (addBelowRow + 1);
+    };
+    content.addChildComponent (addBelowButton);
 
     ruler.onSeek = [this] (double seconds) { seekTo (seconds); };
     ruler.onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w) { return handleWheel (x, e, w); };
@@ -208,6 +212,10 @@ void TrackListView::refresh()
         row->onSelect = [this] (TrackView& view) { selectTrack (view.getTrackPointer()); };
         row->onSeek = [this] (double seconds) { seekTo (seconds); };
         row->onDelete = [this] (TrackView& view) { if (onDeleteRequested != nullptr) onDeleteRequested (view.getTrack()); };
+        row->onRenamed = [this] (TrackView& view) { if (onTrackRenamed != nullptr) onTrackRenamed (view.getTrack()); };
+        row->onHeaderMenu = [this] (TrackView& view) { showTrackMenu (view); };
+        row->onReorderDrag = [this] (TrackView& view, int parentY, int grabY) { reorderDrag (view, parentY, grabY); };
+        row->onReorderEnd = [this] (TrackView& view) { reorderEnd (view); };
         row->onClipClicked = [this] (TrackView& view, juce::uint32 clipId) { selectClip (view.getTrackPointer(), clipId); };
         row->onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
         row->onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w) { return handleWheel (x, e, w); };
@@ -215,13 +223,6 @@ void TrackListView::refresh()
         {
             if (onContextMenu != nullptr)
                 onContextMenu (view.getTrackPointer(), clipId, seconds);
-        };
-        row->onAddBelow = [this] (TrackView& view)
-        {
-            // La pista nueva va justo debajo de la que tiene el "+".
-            for (size_t index = 0; index < rows.size(); ++index)
-                if (rows[index].get() == &view && onAddTrack != nullptr)
-                    onAddTrack (static_cast<int> (index) + 1);
         };
 
         row->setVisibleRange (visibleStart, visibleLength);
@@ -233,12 +234,12 @@ void TrackListView::refresh()
     rows = std::move (newRows);
     content.isEmpty = rows.empty();
     emptyAddButton.setVisible (rows.empty());
-
-    for (size_t i = 0; i < rows.size(); ++i)
-        rows[i]->setIsLast (i + 1 == rows.size());
+    addBelowButton.setVisible (false);
+    addBelowRow = -1;
 
     recordingLane.toFront (false);
     playhead.toFront (false);
+    addBelowButton.toFront (false);
 
     const auto current = selected.lock();
     const auto stillExists = std::any_of (rows.begin(), rows.end(),
@@ -301,6 +302,193 @@ void TrackListView::updateSelectionDisplay()
 }
 
 //==============================================================================
+int TrackListView::indexOf (const TrackView& view) const
+{
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (rows[i].get() == &view)
+            return static_cast<int> (i);
+
+    return -1;
+}
+
+void TrackListView::renameSelectedTrack()
+{
+    const auto current = selected.lock();
+
+    for (auto& row : rows)
+        if (row->getTrackPointer() == current)
+            row->startRename();
+}
+
+void TrackListView::moveSelectedTrack (int direction)
+{
+    const auto current = selected.lock();
+
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        if (rows[i]->getTrackPointer() == current)
+        {
+            moveTrack (static_cast<int> (i), static_cast<int> (i) + direction);
+            return;
+        }
+    }
+}
+
+void TrackListView::moveTrack (int fromIndex, int toIndex)
+{
+    const auto count = static_cast<int> (rows.size());
+
+    if (! juce::isPositiveAndBelow (fromIndex, count) || ! juce::isPositiveAndBelow (toIndex, count) || fromIndex == toIndex)
+    {
+        layoutRows();
+        return;
+    }
+
+    engine.getMixer().moveTrack (fromIndex, toIndex);
+    refresh();      // las filas se reordenan según el mezclador
+
+    if (onTracksReordered != nullptr)
+        onTracksReordered();
+}
+
+void TrackListView::showTrackMenu (TrackView& view)
+{
+    const auto index = indexOf (view);
+
+    if (index < 0)
+        return;
+
+    juce::PopupMenu menu;
+    menu.addItem (renameId, "Cambiar nombre (F2)");
+    menu.addItem (addBelowId, "Añadir pista debajo"_u8);
+    menu.addSeparator();
+    menu.addItem (moveUpId, "Subir pista", index > 0);
+    menu.addItem (moveDownId, "Bajar pista", index + 1 < static_cast<int> (rows.size()));
+    menu.addSeparator();
+    menu.addItem (deleteId, "Eliminar pista...");
+
+    menu.showMenuAsync (juce::PopupMenu::Options(),
+                        [safe = juce::Component::SafePointer<TrackListView> (this), track = view.getTrackPointer()] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+
+        int index = -1;
+
+        for (size_t i = 0; i < safe->rows.size(); ++i)
+            if (safe->rows[i]->getTrackPointer() == track)
+                index = static_cast<int> (i);
+
+        if (index < 0)
+            return;
+
+        switch (result)
+        {
+            case renameId:      safe->rows[static_cast<size_t> (index)]->startRename(); break;
+            case addBelowId:    if (safe->onAddTrack != nullptr) safe->onAddTrack (index + 1); break;
+            case moveUpId:      safe->moveTrack (index, index - 1); break;
+            case moveDownId:    safe->moveTrack (index, index + 1); break;
+            case deleteId:      if (safe->onDeleteRequested != nullptr) safe->onDeleteRequested (*track); break;
+            default:            break;
+        }
+    });
+}
+
+void TrackListView::reorderDrag (TrackView& view, int parentY, int grabY)
+{
+    const auto from = indexOf (view);
+    const auto count = static_cast<int> (rows.size());
+
+    if (from < 0 || count < 2)
+        return;
+
+    draggingRow = from;
+    addBelowButton.setVisible (false);
+
+    // La fila sigue al ratón...
+    const auto h = TrackView::preferredHeight;
+    const auto top = juce::jlimit (0, (count - 1) * h, parentY - grabY);
+    view.setTopLeftPosition (0, top);
+    view.toFront (false);
+    playhead.toFront (false);
+
+    // ...y las demás se apartan dejando el hueco donde caería.
+    dropRow = juce::jlimit (0, count - 1, juce::roundToInt (static_cast<double> (top) / h));
+    int slot = 0;
+
+    for (int i = 0; i < count; ++i)
+    {
+        if (i == from)
+            continue;
+
+        if (slot == dropRow)
+            ++slot;
+
+        rows[static_cast<size_t> (i)]->setTopLeftPosition (0, slot * h);
+        ++slot;
+    }
+
+    // Desplazar la lista si se arrastra cerca del borde.
+    const auto inViewport = viewport.getLocalPoint (&content, juce::Point<int> (0, parentY));
+    viewport.autoScroll (inViewport.x, inViewport.y, 30, 12);
+}
+
+void TrackListView::reorderEnd (TrackView& view)
+{
+    const auto from = indexOf (view);
+    const auto to = dropRow;
+    draggingRow = -1;
+    dropRow = -1;
+
+    moveTrack (from, to);
+}
+
+void TrackListView::updateAddButton()
+{
+    // El "+" aparece al pasar el ratón por una pista, centrado sobre su borde
+    // inferior; mientras el ratón está sobre el propio "+" se mantiene.
+    auto row = -1;
+
+    if (! rows.empty() && draggingRow < 0 && content.isMouseOver (true))
+    {
+        if (addBelowButton.isVisible() && addBelowButton.isMouseOver())
+        {
+            row = addBelowRow;
+        }
+        else
+        {
+            const auto mouse = content.getMouseXYRelative();
+
+            if (mouse.y >= 0)
+                row = mouse.y / TrackView::preferredHeight;
+
+            if (row >= static_cast<int> (rows.size()))
+                row = -1;
+        }
+    }
+
+    if (row < 0)
+    {
+        if (addBelowButton.isVisible())
+            addBelowButton.setVisible (false);
+
+        addBelowRow = -1;
+        return;
+    }
+
+    if (row != addBelowRow || ! addBelowButton.isVisible())
+    {
+        addBelowRow = row;
+        const auto border = rows[static_cast<size_t> (row)]->getBottom() - 1;
+        addBelowButton.colour = rows[static_cast<size_t> (row)]->getColour();
+        addBelowButton.setBounds (0, border - AddTrackButton::height / 2, TrackView::headerWidth - 1, AddTrackButton::height);
+        addBelowButton.setVisible (true);
+        addBelowButton.toFront (false);
+        addBelowButton.repaint();
+    }
+}
+
+//==============================================================================
 void TrackListView::paint (juce::Graphics& g)
 {
     g.setColour (Palette::panel);
@@ -313,14 +501,7 @@ void TrackListView::resized()
     auto bounds = getLocalBounds();
     auto top = bounds.removeFromTop (rulerHeight);
     auto bottom = bounds.removeFromBottom (scrollBarHeight);
-
-    // Esquina superior izquierda: controles de zoom.
-    auto zoomArea = top.removeFromLeft (TrackView::headerWidth).reduced (6, 2);
-    zoomFitButton.setBounds (zoomArea.removeFromRight (64));
-    zoomArea.removeFromRight (4);
-    zoomInButton.setBounds (zoomArea.removeFromRight (26));
-    zoomArea.removeFromRight (4);
-    zoomOutButton.setBounds (zoomArea.removeFromRight (26));
+    top.removeFromLeft (TrackView::headerWidth);
 
     ruler.setBounds (top);
     viewport.setBounds (bounds);
@@ -346,7 +527,7 @@ void TrackListView::layoutRows()
     }
 
     // Sin pistas, el "+" va arriba del todo, en la zona de cabeceras.
-    emptyAddButton.setBounds (0, 0, TrackView::headerWidth, EmptyAddButton::height);
+    emptyAddButton.setBounds (0, 6, TrackView::headerWidth - 1, AddTrackButton::height);
 
     playhead.setBounds (TrackView::headerWidth, 0, juce::jmax (0, width - TrackView::headerWidth), height);
 
@@ -541,6 +722,7 @@ void TrackListView::timerCallback()
     }
 
     updateRecordingLane();
+    updateAddButton();
 
     const auto seconds = static_cast<double> (engine.getTransport().getPosition()) / engine.getSampleRate();
 

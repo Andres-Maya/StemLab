@@ -31,6 +31,9 @@ namespace
         pasteClipId,
         deleteClipId,
         addTrackId,
+        renameTrackId,
+        moveTrackUpId,
+        moveTrackDownId,
         zoomInId,
         zoomOutId,
         zoomFitId,
@@ -80,6 +83,8 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
     trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
     trackList.onAddTrack = [this] (int insertIndex) { addTrack (insertIndex); };
+    trackList.onTracksReordered = [this] { projects.notifyTracksEdited(); };
+    trackList.onTrackRenamed = [this] (AudioTrack&) { mixer.repaint(); };
     trackList.onContextMenu = [this] (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
     {
         showClipMenu (std::move (track), clipId, seconds);
@@ -148,6 +153,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress ('c', command, 0))            { copySelectedClip(); return true; }
     if (key == juce::KeyPress ('v', command, 0))            { pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); return true; }
     if (key == juce::KeyPress ('t', command, 0))            { addTrack(); return true; }
+    if (key == juce::KeyPress::F2Key)                       { trackList.renameSelectedTrack(); return true; }
+    if (key == juce::KeyPress (juce::KeyPress::upKey, juce::ModifierKeys (juce::ModifierKeys::altModifier), 0))   { trackList.moveSelectedTrack (-1); return true; }
+    if (key == juce::KeyPress (juce::KeyPress::downKey, juce::ModifierKeys (juce::ModifierKeys::altModifier), 0)) { trackList.moveSelectedTrack (1); return true; }
     if (key == juce::KeyPress ('n', command, 0))            { newProject(); return true; }
     if (key == juce::KeyPress ('o', command, 0))            { openProject(); return true; }
     if (key == juce::KeyPress ('s', commandShift, 0))       { saveProjectAs(); return true; }
@@ -202,6 +210,9 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             addItem (menu, deleteClipId, "Eliminar fragmento", "Supr", hasClip);
             menu.addSectionHeader ("Pistas");
             addItem (menu, addTrackId, "Añadir pista"_u8, "Ctrl+T");
+            addItem (menu, renameTrackId, "Cambiar nombre de la pista", "F2", hasTrack);
+            addItem (menu, moveTrackUpId, "Subir pista", "Alt+Arriba", hasTrack);
+            addItem (menu, moveTrackDownId, "Bajar pista", "Alt+Abajo", hasTrack);
             addItem (menu, deleteTrackId, "Eliminar pista seleccionada", "Ctrl+Supr", hasTrack);
             break;
         }
@@ -289,6 +300,9 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case pasteClipId:           pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); break;
         case deleteClipId:          deleteSelectedClip(); break;
         case addTrackId:            addTrack(); break;
+        case renameTrackId:         trackList.renameSelectedTrack(); break;
+        case moveTrackUpId:         trackList.moveSelectedTrack (-1); break;
+        case moveTrackDownId:       trackList.moveSelectedTrack (1); break;
         case zoomInId:              trackList.zoomIn(); break;
         case zoomOutId:             trackList.zoomOut(); break;
         case zoomFitId:             trackList.zoomToFit(); break;

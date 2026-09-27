@@ -13,13 +13,14 @@
 namespace stemlab
 {
 /**
-    Zona de pistas: controles de zoom + regla de tiempo + lista desplazable de
-    TrackView + cabezal + barra de desplazamiento horizontal.
+    Zona de pistas: regla de tiempo + lista desplazable de TrackView + cabezal +
+    barra de desplazamiento horizontal.
 
-    Todas las pistas comparten el mismo tramo visible de la línea de tiempo
-    (visibleStart / visibleLength). Zoom: Ctrl + rueda (alrededor del ratón) o
-    los botones -, + y Ajustar. Desplazamiento: Shift + rueda, rueda horizontal
-    o la barra inferior. Al reproducir, la vista sigue al cabezal.
+    - Zoom: Ctrl + rueda (alrededor del ratón). Desplazamiento: Shift + rueda,
+      rueda horizontal o la barra inferior. Al reproducir, la vista sigue al cabezal.
+    - Al pasar el ratón por una pista aparece un "+" en la esquina derecha de su
+      borde inferior: añade una pista justo debajo.
+    - Las pistas se reordenan arrastrando su cabecera.
 
     Guarda la selección: pista seleccionada y, dentro de ella, el clip
     seleccionado (por su id).
@@ -41,7 +42,13 @@ public:
     void selectTrack (const std::shared_ptr<AudioTrack>& track);
     void selectClip (const std::shared_ptr<AudioTrack>& track, juce::uint32 clipId);
 
-    // Zoom (también desde el menú / teclado)
+    /** Abre el editor del nombre de la pista seleccionada (F2). */
+    void renameSelectedTrack();
+
+    /** Mueve la pista seleccionada una posición (-1 arriba, +1 abajo). */
+    void moveSelectedTrack (int direction);
+
+    // Zoom (menú Proyecto > Vista y Ctrl + rueda)
     void zoomIn();
     void zoomOut();
     void zoomToFit();
@@ -50,6 +57,8 @@ public:
     std::function<void (AudioTrack&)> onDeleteRequested;
     std::function<void (std::shared_ptr<AudioTrack>, juce::uint32 clipId, double seconds)> onContextMenu;
     std::function<void()> onClipsEdited;
+    std::function<void()> onTracksReordered;
+    std::function<void (AudioTrack&)> onTrackRenamed;
     std::function<void (int insertIndex)> onAddTrack;       // -1 = al final
 
     void paint (juce::Graphics&) override;
@@ -63,19 +72,24 @@ private:
         bool isEmpty = true;
     };
 
-    /** "+" con su línea arriba del todo cuando todavía no hay pistas. */
-    struct EmptyAddButton final : public juce::Component,
+    /** "+" en un círculo centrado sobre una línea, en su extremo derecho. La
+        línea ocupa solo la zona de cabeceras. Se usa sobre el borde inferior
+        de la pista bajo el ratón, y arriba del todo cuando no hay pistas. */
+    struct AddTrackButton final : public juce::Component,
                                   public juce::SettableTooltipClient
     {
+        static constexpr float radius = 9.0f;
         static constexpr int height = 26;
 
-        void paint (juce::Graphics&) override;
+        juce::Point<float> getCircleCentre() const;
         bool hitTest (int x, int y) override;
+        void paint (juce::Graphics&) override;
         void mouseEnter (const juce::MouseEvent&) override   { hovered = true; repaint(); }
         void mouseExit (const juce::MouseEvent&) override    { hovered = false; repaint(); }
         void mouseUp (const juce::MouseEvent&) override;
 
         std::function<void()> onClick;
+        juce::Colour colour;
         bool hovered = false;
     };
 
@@ -104,6 +118,13 @@ private:
     void timerCallback() override;
     void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
 
+    int indexOf (const TrackView& view) const;
+    void showTrackMenu (TrackView& view);
+    void reorderDrag (TrackView& view, int parentY, int grabY);
+    void reorderEnd (TrackView& view);
+    void moveTrack (int fromIndex, int toIndex);
+    void updateAddButton();
+
     bool handleWheel (int x, const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void zoomAround (double anchorSeconds, double factor);
     void setVisibleRange (double start, double length);
@@ -116,15 +137,12 @@ private:
 
     AudioEngine& engine;
     juce::AudioThumbnailCache thumbnailCache { 32 };
-
-    juce::TextButton zoomOutButton { "-" };
-    juce::TextButton zoomInButton { "+" };
-    juce::TextButton zoomFitButton { "Ajustar" };
     juce::ScrollBar horizontalScroll { false };
 
     // content va antes que viewport: el viewport se destruye primero y lo suelta.
     Content content;
-    EmptyAddButton emptyAddButton;
+    AddTrackButton emptyAddButton;      // sin pistas: arriba del todo
+    AddTrackButton addBelowButton;      // con pistas: en el borde de la pista bajo el ratón
     RecordingLane recordingLane;
     Playhead playhead;
     TimeRuler ruler;
@@ -133,6 +151,10 @@ private:
     std::vector<std::unique_ptr<TrackView>> rows;
     std::weak_ptr<AudioTrack> selected;
     juce::uint32 selectedClip = 0;
+
+    int addBelowRow = -1;               // pista bajo la que está el "+"
+    int draggingRow = -1;               // pista que se está arrastrando
+    int dropRow = -1;                   // posición donde caería
 
     // Línea de tiempo: duración total (contenido + margen) y tramo visible.
     double totalLength = 30.0;
