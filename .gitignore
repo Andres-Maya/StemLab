@@ -7,6 +7,7 @@ CMakeUserPresets.json
 
 # Python
 python/.venv/
+python/runtime/
 __pycache__/
 *.pyc
 
