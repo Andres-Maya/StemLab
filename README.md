@@ -160,11 +160,15 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - **Clic** en un fragmento lo selecciona. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
    - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
    - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
-6. **Pistas:** el **+** en un círculo, pegado al borde inferior de una pista, añade una pista vacía justo debajo de ella. Se ve en la última pista y en la pista sobre la que pasa el ratón; si no hay pistas, aparece arriba del todo. La **×** de cada pista la elimina, tras pedir confirmación.
+6. **Pistas:**
+   - **Añadir:** al pasar el ratón por una pista aparece un **+** en un círculo, centrado sobre su borde inferior en la esquina derecha de la cabecera. Añade una pista justo debajo. Si no hay pistas, el **+** está arriba del todo.
+   - **Mover:** arrastra la cabecera (nombre o zona vacía) arriba o abajo, o usa **Alt+↑ / Alt+↓**.
+   - **Cambiar el nombre:** doble clic en el nombre, **F2**, o clic derecho en la cabecera.
+   - **Eliminar:** la **×** de cada pista, tras pedir confirmación.
 7. **Zoom y desplazamiento:**
    - **Ctrl + rueda** acerca o aleja alrededor del ratón.
    - **Shift + rueda**, o la rueda horizontal del touchpad, desplaza a los lados. También sirve la barra inferior.
-   - Los botones **-**, **+** y **Ajustar** están arriba a la izquierda y en **Proyecto → Vista**.
+   - También en **Proyecto → Vista**.
    - Durante la reproducción, la vista sigue al cabezal.
 8. **Archivo → Guardar proyecto como…**
 
@@ -178,7 +182,9 @@ Atajos de teclado:
 | S | dividir el fragmento en el cabezal |
 | Ctrl+X / C / V | cortar / copiar / pegar fragmento |
 | Supr | eliminar el fragmento seleccionado |
-| Ctrl+T | añadir pista |
+| Ctrl+T | añadir pista (debajo de la seleccionada) |
+| F2 | cambiar el nombre de la pista seleccionada |
+| Alt+↑ / Alt+↓ | subir / bajar la pista seleccionada |
 | Ctrl+Supr | eliminar la pista seleccionada |
 | Ctrl+N / O / S / I | nuevo / abrir / guardar / importar |
 | Ctrl+Shift+S | guardar como |
