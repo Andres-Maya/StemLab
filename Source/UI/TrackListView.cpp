@@ -3,6 +3,7 @@
 #include "Utils/Strings.h"
 
 #include <iterator>
+
 namespace stemlab
 {
 namespace
@@ -19,53 +20,44 @@ void TrackListView::Content::paint (juce::Graphics& g)
         g.setColour (Palette::textDim);
         g.setFont (juce::FontOptions (16.0f));
         g.drawFittedText ("Arrastra aquí una canción o usa Archivo > Importar audio...\n"
-                          "Después, IA > Separar instrumentos."_u8,
+                          "Después, IA > Separar instrumentos. Para grabar, pulsa R."_u8,
                           getLocalBounds().reduced (20), juce::Justification::centred, 3);
     }
 }
 
 void TrackListView::RecordingLane::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds();
-    auto header = bounds.removeFromLeft (TrackView::headerWidth);
-
-    g.setColour (Palette::panel);
-    g.fillRect (header);
-    g.setColour (Palette::record);
-    g.fillRect (header.removeFromLeft (4));
-    g.fillEllipse (header.getX() + 12.0f, header.getCentreY() - 6.0f, 12.0f, 12.0f);
-
-    g.setColour (Palette::text);
-    g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-    g.drawText ("Grabando...", header.withTrimmedLeft (32), juce::Justification::centredLeft, false);
-
-    g.setColour (Palette::background);
-    g.fillRect (bounds);
+    const auto bounds = getLocalBounds();
 
     if (! startSample.has_value() || peaks.empty() || bounds.getWidth() <= 0)
         return;
 
     // Cada pico cubre previewBinSize muestras; se agrupan por columna de píxeles.
     // Si el clip empieza antes del 0, lo que queda a la izquierda no se dibuja
-    // (igual que la pista final, que recorta ese trozo).
+    // (igual que el clip final, que recorta ese trozo).
     const auto pixelsPerSample = bounds.getWidth() / (timelineLength * sampleRate);
     const auto binSize = static_cast<double> (AudioRecorder::previewBinSize);
-    const auto startX = bounds.getX() + static_cast<double> (*startSample) * pixelsPerSample;
+    const auto startX = static_cast<double> (*startSample) * pixelsPerSample;
     const auto endX = startX + static_cast<double> (peaks.size()) * binSize * pixelsPerSample;
 
-    const auto area = bounds.reduced (0, 5).toFloat();
-    g.setColour (Palette::record.withAlpha (0.12f));
-    g.fillRoundedRectangle (juce::Rectangle<float>::leftTopRightBottom ((float) startX, area.getY(), (float) endX, area.getBottom()), 4.0f);
+    // Se graba "encima" de lo que hubiera en la pista: se tapa esa zona.
+    const auto area = bounds.reduced (0, 3).toFloat();
+    const auto region = juce::Rectangle<float>::leftTopRightBottom (juce::jmax (0.0f, (float) startX), area.getY(),
+                                                                    (float) endX, area.getBottom());
+    g.setColour (Palette::background);
+    g.fillRect (region);
+    g.setColour (Palette::record.withAlpha (0.15f));
+    g.fillRoundedRectangle (region, 4.0f);
 
     g.setColour (Palette::record);
     const auto centreY = area.getCentreY();
-    const auto halfHeight = area.getHeight() * 0.5f;
+    const auto halfHeight = area.getHeight() * 0.5f - 2.0f;
     int column = -1;
     float columnPeak = 0.0f;
 
     auto drawColumn = [&]
     {
-        if (column >= bounds.getX() && column < bounds.getRight() && columnPeak > 0.0f)
+        if (column >= 0 && column < bounds.getRight() && columnPeak > 0.0f)
         {
             // Escala en dB (-60..0), como un medidor de grabación: los micrófonos
             // integrados captan bajo y en escala lineal apenas se verían.
@@ -105,6 +97,14 @@ void TrackListView::Playhead::paint (juce::Graphics& g)
 TrackListView::TrackListView (AudioEngine& audioEngine)
     : engine (audioEngine)
 {
+    addTrackButton.setTooltip ("Añadir una pista vacía (Ctrl+T)"_u8);
+    addTrackButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack(); };
+    addAndMakeVisible (addTrackButton);
+
+    removeTrackButton.setTooltip ("Eliminar la pista seleccionada");
+    removeTrackButton.onClick = [this] { if (onRemoveTrack != nullptr) onRemoveTrack(); };
+    addAndMakeVisible (removeTrackButton);
+
     ruler.onSeek = [this] (double seconds) { seekTo (seconds); };
     addAndMakeVisible (ruler);
 
@@ -137,6 +137,7 @@ void TrackListView::refresh()
 
         if (existing != rows.end())
         {
+            (*existing)->trackChanged();
             newRows.push_back (std::move (*existing));
             continue;
         }
@@ -146,10 +147,14 @@ void TrackListView::refresh()
 
         row->onSelect = [this] (TrackView& view) { selectTrack (view.getTrackPointer()); };
         row->onSeek = [this] (double seconds) { seekTo (seconds); };
-        row->onDelete = [this] (TrackView& view)
+        row->onDelete = [this] (TrackView& view) { if (onDeleteRequested != nullptr) onDeleteRequested (view.getTrack()); };
+        row->onArm = [this] (TrackView& view) { if (onArmRequested != nullptr) onArmRequested (view.getTrackPointer()); };
+        row->onClipClicked = [this] (TrackView& view, juce::uint32 clipId) { selectClip (view.getTrackPointer(), clipId); };
+        row->onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
+        row->onContextMenu = [this] (TrackView& view, juce::uint32 clipId, double seconds)
         {
-            if (onDeleteRequested != nullptr)
-                onDeleteRequested (view.getTrack());
+            if (onContextMenu != nullptr)
+                onContextMenu (view.getTrackPointer(), clipId, seconds);
         };
 
         content.addAndMakeVisible (*row);
@@ -158,7 +163,8 @@ void TrackListView::refresh()
 
     // Las filas de pistas eliminadas se destruyen aquí (y liberan su pista).
     rows = std::move (newRows);
-    content.isEmpty = rows.empty() && ! recordingLane.isVisible();
+    content.isEmpty = rows.empty();
+    recordingLane.toFront (false);
     playhead.toFront (false);
 
     const auto current = selected.lock();
@@ -170,6 +176,16 @@ void TrackListView::refresh()
     else if (current == nullptr && ! rows.empty())
         selectTrack (rows.front()->getTrackPointer());
 
+    // El clip seleccionado puede haber desaparecido (eliminado o cortado).
+    if (auto track = selected.lock(); track != nullptr && selectedClip != 0)
+    {
+        auto clips = track->getClips();
+
+        if (ClipEditing::find (clips, selectedClip) == nullptr)
+            selectedClip = 0;
+    }
+
+    updateSelectionDisplay();
     knownContentLength = -1;
     updateTimeline();
     layoutRows();
@@ -181,17 +197,52 @@ void TrackListView::selectTrack (const std::shared_ptr<AudioTrack>& track)
     const auto previous = selected.lock();
     selected = track;
 
-    for (auto& row : rows)
-        row->setSelected (row->getTrackPointer() == track);
+    if (previous != track)
+    {
+        selectedClip = 0;
 
-    if (previous != track && onSelectionChanged != nullptr)
-        onSelectionChanged (track);
+        if (onSelectionChanged != nullptr)
+            onSelectionChanged (track);
+    }
+
+    updateSelectionDisplay();
+}
+
+void TrackListView::selectClip (const std::shared_ptr<AudioTrack>& track, juce::uint32 clipId)
+{
+    selectTrack (track);
+    selectedClip = clipId;
+    updateSelectionDisplay();
+}
+
+void TrackListView::updateSelectionDisplay()
+{
+    const auto current = selected.lock();
+
+    for (auto& row : rows)
+    {
+        const auto isSelected = row->getTrackPointer() == current;
+        row->setSelected (isSelected);
+        row->setSelectedClip (isSelected ? selectedClip : 0);
+    }
+}
+
+void TrackListView::paint (juce::Graphics& g)
+{
+    g.setColour (Palette::panel);
+    g.fillRect (getLocalBounds().removeFromTop (rulerHeight).withWidth (TrackView::headerWidth));
 }
 
 void TrackListView::resized()
 {
     auto bounds = getLocalBounds();
-    ruler.setBounds (bounds.removeFromTop (rulerHeight).withTrimmedLeft (TrackView::headerWidth));
+    auto top = bounds.removeFromTop (rulerHeight);
+
+    auto buttons = top.removeFromLeft (TrackView::headerWidth).reduced (6, 2);
+    addTrackButton.setBounds (buttons.removeFromLeft (buttons.getWidth() / 2).withTrimmedRight (3));
+    removeTrackButton.setBounds (buttons.withTrimmedLeft (3));
+
+    ruler.setBounds (top);
     viewport.setBounds (bounds);
     layoutRows();
 }
@@ -199,8 +250,8 @@ void TrackListView::resized()
 void TrackListView::layoutRows()
 {
     const auto width = viewport.getMaximumVisibleWidth();
-    const auto numRows = static_cast<int> (rows.size()) + (recordingLane.isVisible() ? 1 : 0);
-    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(), numRows * TrackView::preferredHeight);
+    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(),
+                                    static_cast<int> (rows.size()) * TrackView::preferredHeight);
 
     content.setSize (width, height);
 
@@ -211,9 +262,6 @@ void TrackListView::layoutRows()
         row->setBounds (0, y, width, TrackView::preferredHeight);
         y += TrackView::preferredHeight;
     }
-
-    // La fila de grabación va debajo de las pistas existentes.
-    recordingLane.setBounds (0, y, width, TrackView::preferredHeight);
 
     playhead.setBounds (TrackView::headerWidth, 0, juce::jmax (0, width - TrackView::headerWidth), height);
 
@@ -243,24 +291,40 @@ void TrackListView::setTimelineLength (double seconds)
 
 void TrackListView::updateRecordingLane()
 {
-    const auto recording = engine.isRecording();
+    // La vista previa se dibuja sobre la zona de clips de la pista armada.
+    TrackView* targetRow = nullptr;
 
-    if (recording != recordingLane.isVisible())
+    if (engine.isRecording())
+        for (auto& row : rows)
+            if (row->getTrack().isArmed())
+                targetRow = row.get();
+
+    if (targetRow == nullptr)
+    {
+        if (recordingLane.isVisible())
+        {
+            recordingLane.setVisible (false);
+            recordingLane.peaks.clear();
+            recordingLane.startSample.reset();
+        }
+
+        return;
+    }
+
+    const auto laneBounds = targetRow->getBounds().withTrimmedLeft (TrackView::headerWidth).withTrimmedBottom (1);
+
+    if (! recordingLane.isVisible())
     {
         recordingLane.peaks.clear();
         recordingLane.startSample.reset();
-        recordingLane.setVisible (recording);
-        content.isEmpty = rows.empty() && ! recording;
-        layoutRows();
-        content.repaint();
+        recordingLane.setVisible (true);
 
-        // Que la fila de grabación quede a la vista aunque haya muchas pistas.
-        if (recording)
-            viewport.setViewPosition (0, juce::jmax (0, recordingLane.getBottom() - viewport.getViewHeight()));
+        // Que la pista que se graba quede a la vista aunque haya muchas.
+        viewport.setViewPosition (0, juce::jmax (0, laneBounds.getBottom() - viewport.getViewHeight()));
     }
 
-    if (! recording)
-        return;
+    if (recordingLane.getBounds() != laneBounds)
+        recordingLane.setBounds (laneBounds);
 
     float buffer[256];
     auto added = false;
@@ -285,7 +349,7 @@ void TrackListView::seekTo (double seconds)
 
 void TrackListView::timerCallback()
 {
-    // La duración cambia al terminar una grabación o al mover pistas.
+    // La duración cambia al terminar una grabación o al editar clips.
     if (const auto length = engine.getMixer().getContentLength(); length != knownContentLength)
     {
         knownContentLength = length;
