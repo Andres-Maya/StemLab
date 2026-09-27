@@ -77,7 +77,6 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
     trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
     trackList.onAddTrack = [this] { addTrack(); };
-    trackList.onRemoveTrack = [this] { deleteSelectedTrack(); };
     trackList.onContextMenu = [this] (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
     {
         showClipMenu (std::move (track), clipId, seconds);
@@ -442,7 +441,30 @@ void MainComponent::removeTrack (AudioTrack& track)
         return;
     }
 
-    projects.removeTrack (track);
+    // Se guarda una referencia débil: si la pista desaparece mientras el
+    // diálogo está abierto, no se hace nada.
+    std::weak_ptr<AudioTrack> weakTrack;
+
+    for (const auto& t : engine.getMixer().getTracks())
+        if (t.get() == &track)
+            weakTrack = t;
+
+    const auto message = "¿Estás seguro de que quieres eliminar esta pista?\n\n\""_u8 + track.getName() + "\"\n\n"
+                       + "Sus fragmentos se quitarán del proyecto; los archivos de audio se conservan en disco."_u8;
+
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Eliminar pista", message,
+                                        "Eliminar", "Cancelar", this,
+                                        juce::ModalCallbackFunction::create (
+                                            [safe = juce::Component::SafePointer<MainComponent> (this), weakTrack] (int result)
+                                        {
+                                            const auto target = weakTrack.lock();
+
+                                            if (result == 0 || safe == nullptr || target == nullptr)
+                                                return;
+
+                                            safe->projects.removeTrack (*target);
+                                            safe->statusBar.setMessage ("Pista \"" + target->getName() + "\" eliminada.");
+                                        }));
 }
 
 void MainComponent::addTrack()
