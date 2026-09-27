@@ -174,6 +174,7 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. Si el cabezal está sobre audio, lo pegado va justo después, en el primer hueco donde quepa. **Supr** o **Retroceso** eliminan el fragmento seleccionado.
    - **Clic derecho** abre el menú de edición.
    - **Mover delante o detrás de otro fragmento:** al arrastrar, el fragmento se detiene al tocar a su vecino. Si sigues arrastrando hasta que su centro pase del centro del vecino, salta al otro lado. Si ahí no cabe, se abre espacio: los fragmentos que quedan por delante se desplazan todos juntos lo justo, sin cambiar las distancias entre ellos. Si vuelves atrás sin soltar, regresan a su sitio. Todo el arrastre se deshace con un solo **Ctrl+Z**.
+   - Mientras lo arrastras, el fragmento **se levanta**: sube un poco, con sombra y un halo, y sigue al ratón por encima de los demás, que se oscurecen debajo. Los que se apartan se deslizan, y al soltar baja hasta su sitio.
    - Al recortar, el borde se detiene al llegar al fragmento vecino. Nunca queda un fragmento encima de otro.
    - **Deshacer / rehacer:** **Ctrl+Z** deshace y **Ctrl+Y** (o **Ctrl+Shift+Z**) rehace. También están en el menú **Editar**, que muestra qué se va a deshacer. Se puede deshacer todo lo que se hace con fragmentos (dividir, cortar, pegar, eliminar, mover, recortar, grabar) y con pistas (añadir, pegar, cortar, eliminar, mover, cambiar el nombre, importar audio y separar instrumentos). El historial se vacía al crear o abrir un proyecto.
 6. **Pistas:**
@@ -229,7 +230,7 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
