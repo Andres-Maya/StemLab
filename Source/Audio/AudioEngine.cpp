@@ -347,7 +347,9 @@ void AudioEngine::handleAsyncUpdate()
 
     for (const auto& track : mixer.getTracks())
     {
-        if (std::abs (track->getSampleRate() - rate) > 0.5)
+        const auto trackRate = track->getSampleRate();   // 0 = pista vacía
+
+        if (trackRate > 0.0 && std::abs (trackRate - rate) > 0.5)
         {
             transport.stop();
 
