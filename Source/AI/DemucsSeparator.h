@@ -28,8 +28,7 @@ public:
         int shifts = 1;
     };
 
-    /** Busca el script y el entorno virtual (python/.venv). La variable de
-        entorno STEMLAB_PYTHON permite forzar otro intérprete. */
+    /** Busca el script y el entorno virtual (ver PythonEnvironment). */
     static Settings findDefaultSettings();
 
     explicit DemucsSeparator (Settings settings);
