@@ -160,7 +160,8 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
 3. Cada pista tiene Mute, Solo, volumen y paneo. Al seleccionarla, el mezclador muestra su canal y su cadena de efectos.
 4. **Grabar:** selecciona una pista (clic en ella) y pulsa el botón rojo ⏺ del transporte o **R**. Si no hay ninguna pista seleccionada, se crea una nueva. Mientras graba, la franja de la pista se pone roja.
-   - La grabación empieza en el cabezal. Para grabar **encima de audio que ya está en la pista**, haz clic sobre ese audio: el fragmento queda seleccionado, la pista también y el cabezal se coloca ahí. Después pulsa **R**. La toma nueva se dibuja y suena por encima de lo que había en esa zona, y el resto se conserva. Con **Ctrl+Z** se quita la toma.
+   - La grabación empieza en el cabezal. En una pista los fragmentos **nunca se solapan**: si el cabezal está sobre audio ya grabado, la toma empieza justo después de ese audio. Si al grabar llega al fragmento siguiente, se corta ahí (el audio sigue en el archivo; puedes alargar la toma arrastrando su borde si mueves antes el otro fragmento). Con **Ctrl+Z** se quita la toma.
+   - Para grabar **encima** de algo ya grabado, usa otra pista: con **+** o **Ctrl+T** creas una pista vacía justo debajo, ya seleccionada.
    - Para grabar aparte de la canción, primero crea una pista con el botón **+** (queda seleccionada).
    - Mientras se graba, el cabezal no se puede mover: la toma ocupa un tramo continuo desde donde empezó.
    - Pausar (**R** o Espacio) y volver a pulsar **R** sigue grabando **en la misma pista**, como un fragmento nuevo justo después del anterior.
@@ -170,14 +171,15 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
 5. **Editar fragmentos** (clips). La edición no destructiva nunca modifica los archivos de audio:
    - **Clic** en un fragmento lo selecciona y coloca el cabezal en ese punto. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
-   - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
-   - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
+   - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. Si el cabezal está sobre audio, lo pegado va justo después, en el primer hueco donde quepa. **Supr** o **Retroceso** eliminan el fragmento seleccionado.
+   - **Clic derecho** abre el menú de edición.
+   - Al mover o recortar, un fragmento se detiene al tocar a su vecino: nunca pasa por encima.
    - **Deshacer / rehacer:** **Ctrl+Z** deshace y **Ctrl+Y** (o **Ctrl+Shift+Z**) rehace. También están en el menú **Editar**, que muestra qué se va a deshacer. Se puede deshacer todo lo que se hace con fragmentos (dividir, cortar, pegar, eliminar, mover, recortar, grabar) y con pistas (añadir, pegar, cortar, eliminar, mover, cambiar el nombre, importar audio y separar instrumentos). El historial se vacía al crear o abrir un proyecto.
 6. **Pistas:**
    - **Añadir:** al pasar el ratón por una pista aparece un **+** en un círculo, centrado sobre su borde inferior en la esquina derecha de la cabecera. Añade una pista justo debajo. Si no hay pistas, el **+** está arriba del todo.
    - **Mover:** arrastra la cabecera (nombre o zona vacía) arriba o abajo, o usa **Alt+↑ / Alt+↓**.
    - **Cambiar el nombre:** doble clic en el nombre, **F2**, o clic derecho en la cabecera.
-   - **Eliminar:** la **×** de cada pista, tras pedir confirmación. **Ctrl+Z** la recupera con sus fragmentos, volumen y efectos.
+   - **Eliminar:** la **×** de cada pista, o clic en su cabecera y **Supr** / **Retroceso**, tras pedir confirmación. **Ctrl+Z** la recupera con sus fragmentos, volumen y efectos.
    - **Copiar, cortar y pegar pistas:** haz clic en la cabecera de la pista (así no queda ningún fragmento seleccionado) y pulsa **Ctrl+C** o **Ctrl+X**. **Ctrl+V** pega una copia debajo de la pista seleccionada, con sus fragmentos, volumen, paneo y efectos. Si el nombre ya existe, se añade "(copia)". También está en el menú **Editar** y en el clic derecho de la cabecera.
    - Con un fragmento seleccionado, **Ctrl+C / Ctrl+X** actúan sobre el fragmento. **Ctrl+V** pega siempre lo último que copiaste, sea un fragmento o una pista.
 7. **Zoom y desplazamiento:**
@@ -203,7 +205,7 @@ Atajos de teclado:
 | Ctrl+Z | deshacer |
 | Ctrl+Y / Ctrl+Shift+Z | rehacer |
 | Ctrl+X / C / V | cortar / copiar / pegar el fragmento seleccionado, o la pista entera si no hay fragmento seleccionado |
-| Supr | eliminar el fragmento seleccionado |
+| Supr / Retroceso | eliminar el fragmento seleccionado, o la pista si no hay fragmento seleccionado (pide confirmación) |
 | Ctrl+T | añadir pista (debajo de la seleccionada) |
 | F2 | cambiar el nombre de la pista seleccionada |
 | Alt+↑ / Alt+↓ | subir / bajar la pista seleccionada |
@@ -226,8 +228,8 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, grabar encima de audio, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
-| `--device` | grabar de verdad (incluida una toma encima de otra), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, fragmentos sin solaparse (grabar, pegar, mover, recortar), Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
 | `--acoustic` | reproduce ruido por los altavoces y comprueba que el micrófono no lo atenúa (modo RAW) | altavoces y micrófono; hace ruido |
