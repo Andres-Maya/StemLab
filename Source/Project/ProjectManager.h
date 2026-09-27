@@ -6,13 +6,14 @@
 #include "ProjectSerializer.h"
 
 #include <functional>
+#include <map>
 #include <vector>
 
 namespace stemlab
 {
 /**
     Coordina el proyecto abierto con el motor de audio: crear, abrir, guardar,
-    importar audio y convertir grabaciones o stems en pistas.
+    importar audio, crear pistas y convertir grabaciones o stems en clips.
 
     Todas las funciones públicas son del hilo de mensajes. La decodificación
     de audio ocurre en un hilo de trabajo (loaderPool) y el resultado vuelve al
@@ -44,37 +45,59 @@ public:
     juce::Result save();
     juce::Result saveAs (const juce::File& newFolder);
 
+    //==========================================================================
+    // Pistas
     bool canImport (const juce::File& file) const;
     void importAudio (const juce::Array<juce::File>& files, Callback onDone);
     void addTracks (std::vector<NewTrack> tracks, Callback onDone);
-    void addRecording (const RecordingInfo& recording, Callback onDone);
+
+    /** Crea una pista vacía (por ejemplo, para grabar en ella). */
+    std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName);
     void removeTrack (const AudioTrack& track);
 
+    /** Pista elegida para grabar. Solo una puede estar armada. */
+    std::shared_ptr<AudioTrack> getArmedTrack() const;
+    void setArmedTrack (const std::shared_ptr<AudioTrack>& track);
+
+    /** Añade la grabación como un clip nuevo de la pista indicada (o de una
+        pista nueva si ya no existe). */
+    void addRecording (const RecordingInfo& recording, std::weak_ptr<AudioTrack> target, Callback onDone);
+
+    /** Avisar tras editar clips (actualiza la duración y la interfaz). */
+    void notifyTracksEdited();
+
+    juce::String createTrackName (const juce::String& baseName) const;
     juce::File createRecordingFile() const;
     juce::File createStemsFolderFor (const AudioTrack& track) const;
 
 private:
-    struct LoadRequest
+    struct ClipRequest
     {
-        juce::String name;
         juce::File file;
         double startSeconds = 0.0;
-        juce::var state;
-        bool copyIntoProject = false;
+        double offsetSeconds = 0.0;
+        double lengthSeconds = -1.0;
     };
 
-    struct DecodedTrack
+    struct TrackRequest
     {
-        LoadRequest request;
-        juce::File file;
-        juce::AudioBuffer<float> audio;
-        juce::int64 startSample = 0;
+        juce::String name;
+        juce::var state;
+        std::vector<ClipRequest> clips;
+        std::weak_ptr<AudioTrack> target;   // si sigue existiendo, los clips se añaden a ella
+        bool keepIfEmpty = false;           // proyecto abierto: conservar la pista aunque falte el audio
+        bool copyIntoProject = false;
+        bool armed = false;
     };
 
-    void loadTracks (std::vector<LoadRequest> requests, Callback onDone);
-    void finishLoading (std::vector<DecodedTrack>& decoded, const juce::StringArray& errors,
-                        double decodedSampleRate, int loadGeneration, const Callback& onDone);
+    using SourceMap = std::map<juce::String, std::shared_ptr<ClipSource>>;
+
+    void loadTracks (std::vector<TrackRequest> requests, Callback onDone);
+    void finishLoading (const std::vector<TrackRequest>& requests, const SourceMap& sources,
+                        const juce::StringArray& errors, double decodedSampleRate,
+                        int loadGeneration, const Callback& onDone);
     void reloadAllTracks();
+    std::vector<TrackRequest> requestsFrom (const ProjectDocument& document) const;
     ProjectDocument describe() const;
 
     AudioEngine& engine;
