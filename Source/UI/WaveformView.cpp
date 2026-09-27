@@ -25,13 +25,23 @@ void WaveformView::setWaveColour (juce::Colour newColour)
     repaint();
 }
 
-void WaveformView::setTimelineLength (double seconds)
+void WaveformView::setVisibleRange (double startSeconds, double lengthSeconds)
 {
-    if (! juce::exactlyEqual (timelineLength, seconds))
+    startSeconds = juce::jmax (0.0, startSeconds);
+    lengthSeconds = juce::jmax (0.01, lengthSeconds);
+
+    if (! juce::exactlyEqual (visibleStart, startSeconds) || ! juce::exactlyEqual (visibleLength, lengthSeconds))
     {
-        timelineLength = juce::jmax (1.0, seconds);
+        visibleStart = startSeconds;
+        visibleLength = lengthSeconds;
         repaint();
     }
+}
+
+void WaveformView::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    if (onWheel == nullptr || ! onWheel (event.x, event, wheel))
+        Component::mouseWheelMove (event, wheel);
 }
 
 void WaveformView::setDimmed (bool shouldBeDimmed)
@@ -102,12 +112,12 @@ juce::AudioThumbnail* WaveformView::thumbnailFor (const ClipSource* source) cons
 
 double WaveformView::secondsForX (int x) const
 {
-    return getWidth() > 0 ? juce::jmax (0.0, static_cast<double> (x) / getWidth() * timelineLength) : 0.0;
+    return getWidth() > 0 ? juce::jmax (0.0, visibleStart + static_cast<double> (x) / getWidth() * visibleLength) : 0.0;
 }
 
 float WaveformView::xForSample (juce::int64 sample, double sampleRate) const
 {
-    return static_cast<float> (static_cast<double> (sample) / sampleRate / timelineLength * getWidth());
+    return static_cast<float> ((static_cast<double> (sample) / sampleRate - visibleStart) / visibleLength * getWidth());
 }
 
 //==============================================================================
@@ -140,11 +150,17 @@ void WaveformView::paint (juce::Graphics& g)
 
         if (auto* thumbnail = thumbnailFor (clip.source.get()))
         {
+            // Con mucho zoom un clip puede medir cientos de miles de píxeles:
+            // solo se dibuja el trozo visible, con su tramo de tiempo.
+            const auto visible = area.getIntersection (getLocalBounds().toFloat());
+            const auto clipStartTime = static_cast<double> (clip.sourceOffset) / rate;
+            const auto clipDuration = static_cast<double> (clip.length) / rate;
+            const auto t0 = clipStartTime + (visible.getX() - x0) / (x1 - x0) * clipDuration;
+            const auto t1 = clipStartTime + (visible.getRight() - x0) / (x1 - x0) * clipDuration;
+
             const auto zoom = verticalZooms.count (clip.source.get()) > 0 ? verticalZooms.at (clip.source.get()) : 1.0f;
             g.setColour (dimmed ? waveColour.withAlpha (0.3f) : waveColour);
-            thumbnail->drawChannels (g, area.reduced (1.0f, 2.0f).toNearestInt(),
-                                     static_cast<double> (clip.sourceOffset) / rate,
-                                     static_cast<double> (clip.sourceOffset + clip.length) / rate, zoom);
+            thumbnail->drawChannels (g, visible.reduced (1.0f, 2.0f).toNearestInt(), t0, t1, zoom);
         }
 
         g.setColour (isSelected ? Palette::text : waveColour.withAlpha (0.5f));
@@ -254,7 +270,7 @@ void WaveformView::mouseDrag (const juce::MouseEvent& event)
     if (! dragChanged && std::abs (dx) < dragThreshold)
         return;
 
-    const auto samplesPerPixel = timelineLength * dragOriginal.source->sampleRate / getWidth();
+    const auto samplesPerPixel = visibleLength * dragOriginal.source->sampleRate / getWidth();
     const auto delta = static_cast<juce::int64> (std::llround (dx * samplesPerPixel));
 
     auto edited = dragOriginal;

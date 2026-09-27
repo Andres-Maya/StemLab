@@ -27,7 +27,9 @@ public:
     WaveformView (AudioTrack& track, juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache);
 
     void setWaveColour (juce::Colour newColour);
-    void setTimelineLength (double seconds);
+
+    /** Tramo de la línea de tiempo que se ve (zoom y desplazamiento). */
+    void setVisibleRange (double startSeconds, double lengthSeconds);
     void setDimmed (bool shouldBeDimmed);
     void setSelectedClip (juce::uint32 clipId);
 
@@ -39,7 +41,12 @@ public:
     std::function<void (juce::uint32 clipId, double seconds)> onContextMenu;   // 0 = zona vacía
     std::function<void()> onClipsEdited;                                       // al soltar tras mover o recortar
 
+    /** Rueda del ratón (zoom con Ctrl, desplazamiento con Shift). Devuelve true si la usó;
+        si no, la rueda desplaza la lista de pistas en vertical. */
+    std::function<bool (int x, const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
+
     void paint (juce::Graphics&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -68,7 +75,8 @@ private:
     std::map<const ClipSource*, float> verticalZooms;   // solo visual: amplía el dibujo del audio muy bajo
 
     juce::Colour waveColour { 0xff4fc3f7 };
-    double timelineLength = 60.0;
+    double visibleStart = 0.0;
+    double visibleLength = 60.0;
     bool dimmed = false;
     juce::uint32 selectedClip = 0;
 
