@@ -223,8 +223,18 @@ void ProjectManager::markSaved()
 
 void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callback onDone)
 {
-    const auto projectFile = projectFileOrFolder.isDirectory() ? projectFileOrFolder.getChildFile ("project.json")
+    const auto projectFile = projectFileOrFolder.isDirectory() ? Project::findProjectFileIn (projectFileOrFolder)
                                                                : projectFileOrFolder;
+
+    if (projectFile == juce::File())
+    {
+        if (onDone != nullptr)
+            onDone (juce::Result::fail ("No hay ningún proyecto de StemLab (.stemlab) en la carpeta:\n"_u8
+                                        + projectFileOrFolder.getFullPathName()));
+
+        return;
+    }
+
     Project loaded;
     ProjectDocument document;
 
@@ -282,7 +292,7 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
         if (newFolder.existsAsFile())
             return juce::Result::fail ("Ya existe un archivo con ese nombre.");
 
-        const auto isOtherProject = newFolder.getChildFile ("project.json").existsAsFile();
+        const auto isOtherProject = Project::findProjectFileIn (newFolder).existsAsFile();
 
         if (newFolder.isDirectory() && ! isOtherProject
             && newFolder.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0)
@@ -310,7 +320,10 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
             oldFolder.deleteRecursively();
     }
 
+    const auto previousFile = project.getProjectFile();
+
     project.setDirectory (newFolder);
+    project.setProjectFile (Project::projectFileFor (newFolder));
     project.setName (newFolder.getFileName());
     project.setTemporary (false);
 
@@ -320,13 +333,28 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
     const auto result = ProjectSerializer::write (project, describe());
 
     if (result.wasOk())
+    {
         markSaved();
+
+        // Un proyecto antiguo guardado en su misma carpeta pasa a ser .stemlab:
+        // se quita el project.json viejo para que no haya dos versiones.
+        if (previousFile.getFileName() == "project.json" && previousFile.getParentDirectory() == newFolder)
+            previousFile.deleteFile();
+    }
 
     sendChangeMessage();
     return result;
 }
 
 //==============================================================================
+juce::File ProjectManager::folderForSaveAs (const juce::File& chosenFile)
+{
+    const auto name = chosenFile.getFileNameWithoutExtension();
+    const auto parent = chosenFile.getParentDirectory();
+
+    return parent.getFileName() == name ? parent : parent.getChildFile (name);
+}
+
 bool ProjectManager::canImport (const juce::File& file) const
 {
     return file.existsAsFile()

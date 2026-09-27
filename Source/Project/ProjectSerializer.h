@@ -15,7 +15,7 @@ struct ClipDescription
     double lengthSeconds = -1.0;    // < 0: hasta el final del archivo
 };
 
-/** Descripción de una pista tal como se guarda en project.json. */
+/** Descripción de una pista tal como se guarda en el archivo .stemlab. */
 struct TrackDescription
 {
     juce::String name;
@@ -31,7 +31,8 @@ struct ProjectDocument
 };
 
 /**
-    Lectura y escritura de project.json. No depende del motor de audio: recibe
+    Lectura y escritura del archivo de proyecto (.stemlab, o el antiguo
+    project.json: es el mismo JSON). No depende del motor de audio: recibe
     y devuelve descripciones, así es fácil de probar y de versionar.
 
     Versión 1: una pista = un archivo + inicio.

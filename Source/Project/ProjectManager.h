@@ -47,9 +47,19 @@ public:
     bool hasUnsavedChanges() const;
 
     void newProject();
+
+    /** Abre un .stemlab (o un project.json antiguo), o la carpeta que lo contiene. */
     void openProject (const juce::File& projectFileOrFolder, Callback onDone);
     juce::Result save();
+
+    /** Guarda el proyecto en una carpeta propia: newFolder/<nombre>.stemlab más
+        audio/, stems/, recordings/ y exports/ (se copian desde la carpeta anterior). */
     juce::Result saveAs (const juce::File& newFolder);
+
+    /** Carpeta de "Guardar como" para el archivo elegido en el diálogo:
+        C:/Musica/MiCancion.stemlab -> C:/Musica/MiCancion/ (si ya se eligió
+        dentro de esa carpeta, la misma). */
+    static juce::File folderForSaveAs (const juce::File& chosenFile);
 
     //==========================================================================
     // Pistas

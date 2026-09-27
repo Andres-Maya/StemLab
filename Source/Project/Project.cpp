@@ -5,8 +5,36 @@ namespace stemlab
 Project::Project (juce::String projectName, juce::File projectDirectory, bool isTemporary)
     : name (std::move (projectName)),
       directory (std::move (projectDirectory)),
+      projectFile (projectFileFor (directory)),
       temporary (isTemporary)
 {
+}
+
+juce::File Project::projectFileFor (const juce::File& folder)
+{
+    return folder.getChildFile (folder.getFileName() + fileExtension);
+}
+
+juce::File Project::findProjectFileIn (const juce::File& folder)
+{
+    if (const auto preferred = projectFileFor (folder); preferred.existsAsFile())
+        return preferred;
+
+    auto others = folder.findChildFiles (juce::File::findFiles, false, juce::String ("*") + fileExtension);
+    others.sort();
+
+    if (! others.isEmpty())
+        return others.getFirst();
+
+    if (const auto legacy = folder.getChildFile ("project.json"); legacy.existsAsFile())
+        return legacy;
+
+    return {};
+}
+
+bool Project::isProjectFile (const juce::File& file)
+{
+    return file.hasFileExtension (fileExtension) || file.getFileName() == "project.json";
 }
 
 juce::Result Project::createFolderStructure() const

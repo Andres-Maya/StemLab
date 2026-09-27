@@ -61,7 +61,7 @@ juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& pr
     juce::var root;
 
     if (const auto parsed = juce::JSON::parse (projectFile.loadFileAsString(), root); parsed.failed())
-        return juce::Result::fail ("project.json no es un JSON válido: "_u8 + parsed.getErrorMessage());
+        return juce::Result::fail (projectFile.getFileName() + " no es un JSON válido: "_u8 + parsed.getErrorMessage());
 
     if (root.getProperty ("format", {}).toString() != formatName)
         return juce::Result::fail ("El archivo no es un proyecto de StemLab.");
@@ -73,6 +73,7 @@ juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& pr
 
     project = Project (root.getProperty ("name", projectFile.getParentDirectory().getFileName()).toString(),
                        projectFile.getParentDirectory(), false);
+    project.setProjectFile (projectFile);
     project.setBpm (root.getProperty ("bpm", 120.0));
 
     document = {};
