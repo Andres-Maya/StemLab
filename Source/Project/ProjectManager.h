@@ -51,8 +51,9 @@ public:
     void importAudio (const juce::Array<juce::File>& files, Callback onDone);
     void addTracks (std::vector<NewTrack> tracks, Callback onDone);
 
-    /** Crea una pista vacía (por ejemplo, para grabar en ella). */
-    std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName);
+    /** Crea una pista vacía (por ejemplo, para grabar en ella) en la posición
+        indicada, o al final si insertIndex < 0. */
+    std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName, int insertIndex = -1);
     void removeTrack (const AudioTrack& track);
 
     /** Pista en la que se está grabando (solo una; resalta su franja y la vista

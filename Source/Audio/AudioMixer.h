@@ -25,7 +25,8 @@ public:
 
     //==========================================================================
     // Hilo de mensajes
-    void addTrack (std::shared_ptr<AudioTrack> track);
+    /** insertIndex < 0 o fuera de rango: al final. */
+    void addTrack (std::shared_ptr<AudioTrack> track, int insertIndex = -1);
     std::shared_ptr<AudioTrack> removeTrack (const AudioTrack* track);
     std::vector<std::shared_ptr<AudioTrack>> removeAllTracks();
 
