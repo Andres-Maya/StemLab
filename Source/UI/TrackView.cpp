@@ -1,11 +1,14 @@
 #include "TrackView.h"
 
+#include "Utils/Strings.h"
+
 namespace stemlab
 {
 TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour trackColour,
                       juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache)
     : track (std::move (audioTrack)),
       colour (trackColour),
+      armButton ("Grabar en esta pista", IconButton::Icon::record),
       deleteButton ("Eliminar pista", IconButton::Icon::close),
       meter ([t = track.get()] (int channel) { return t->getAndResetPeak (channel); }),
       waveform (*track, formatManager, cache),
@@ -20,6 +23,12 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     nameLabel.setTooltip ("Doble clic para renombrar");
     nameLabel.onTextChange = [this] { track->setName (nameLabel.getText()); };
     addAndMakeVisible (nameLabel);
+
+    // El botón de armar se enciende en rojo en la pista elegida para grabar.
+    armButton.setActiveColour (Palette::record);
+    armButton.setToggleState (track->isArmed(), juce::dontSendNotification);
+    armButton.onClick = [this] { if (onArm != nullptr) onArm (*this); };
+    addAndMakeVisible (armButton);
 
     muteButton.setColour (juce::TextButton::buttonOnColourId, Palette::mute);
     soloButton.setColour (juce::TextButton::buttonOnColourId, Palette::solo);
@@ -48,6 +57,9 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
         if (onSeek != nullptr)
             onSeek (seconds);
     };
+    waveform.onClipClicked = [this] (juce::uint32 clipId) { if (onClipClicked != nullptr) onClipClicked (*this, clipId); };
+    waveform.onContextMenu = [this] (juce::uint32 clipId, double seconds) { if (onContextMenu != nullptr) onContextMenu (*this, clipId, seconds); };
+    waveform.onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
     addAndMakeVisible (waveform);
 
     track->getMute().addListener (this);
@@ -72,6 +84,12 @@ void TrackView::setTimelineLength (double seconds)
     waveform.setTimelineLength (seconds);
 }
 
+void TrackView::trackChanged()
+{
+    armButton.setToggleState (track->isArmed(), juce::dontSendNotification);
+    waveform.clipsChanged();
+}
+
 void TrackView::parameterChanged (Parameter&)
 {
     waveform.setDimmed (track->getMute().getBool());
@@ -84,8 +102,8 @@ void TrackView::paint (juce::Graphics& g)
     g.setColour (selected ? Palette::panelLight : Palette::panel);
     g.fillRect (header);
 
-    // Franja de color de la pista.
-    g.setColour (colour);
+    // Franja de color de la pista (roja si está armada para grabar).
+    g.setColour (track->isArmed() ? Palette::record : colour);
     g.fillRect (header.removeFromLeft (4.0f));
 
     g.setColour (Palette::outline);
@@ -103,11 +121,13 @@ void TrackView::resized()
 
     auto top = header.removeFromTop (24);
     deleteButton.setBounds (top.removeFromRight (22).reduced (1));
-    top.removeFromRight (4);
-    soloButton.setBounds (top.removeFromRight (26));
-    top.removeFromRight (4);
-    muteButton.setBounds (top.removeFromRight (26));
-    top.removeFromRight (4);
+    top.removeFromRight (3);
+    soloButton.setBounds (top.removeFromRight (24));
+    top.removeFromRight (3);
+    muteButton.setBounds (top.removeFromRight (24));
+    top.removeFromRight (3);
+    armButton.setBounds (top.removeFromRight (24));
+    top.removeFromRight (3);
     nameLabel.setBounds (top);
 
     header.removeFromTop (6);
