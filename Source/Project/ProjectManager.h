@@ -40,6 +40,11 @@ public:
     void setBpm (double bpm);
     bool isLoading() const noexcept                 { return pendingLoads > 0; }
 
+    /** ¿Hay cambios sin guardar? Compara el estado actual (pistas, clips,
+        volúmenes, efectos, nombres, orden, BPM...) con el del último
+        guardado, apertura o proyecto nuevo. */
+    bool hasUnsavedChanges() const;
+
     void newProject();
     void openProject (const juce::File& projectFileOrFolder, Callback onDone);
     juce::Result save();
@@ -101,6 +106,10 @@ private:
     void reloadAllTracks();
     std::vector<TrackRequest> requestsFrom (const ProjectDocument& document) const;
     ProjectDocument describe() const;
+
+    /** Toma la "foto" del estado actual como referencia de "sin cambios". */
+    void markSaved();
+    juce::String savedSnapshot;
 
     AudioEngine& engine;
     Project project;

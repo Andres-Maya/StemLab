@@ -41,6 +41,9 @@ struct ProjectSerializer
 {
     static constexpr int currentVersion = 2;
 
+    /** El JSON que se guardaría (también sirve para detectar cambios sin guardar). */
+    static juce::String toJson (const Project& project, const ProjectDocument& document);
+
     static juce::Result write (const Project& project, const ProjectDocument& document);
     static juce::Result read (const juce::File& projectFile, Project& project, ProjectDocument& document);
 };
