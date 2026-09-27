@@ -160,7 +160,13 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
 ## Uso
 
 1. **Archivo → Importar audio…**, o arrastra un archivo a la ventana.
-2. **IA → Separar instrumentos**. El modelo se elige en el mismo menú:
+2. **IA → Separar instrumentos**. Se abre una ventana con la separación en marcha:
+   - En el centro gira una esfera del color de la pista que se separa, con su porcentaje y un anillo de frecuencias.
+   - Según avanza, salen de ella esferas del color de cada pista que se va a generar (Voz, Batería, Bajo…), cada una con su propia animación. Con 4 pistas aparecen al 20, 40, 60 y 80 %.
+   - **Cancelar separación** la detiene. Cerrar la ventana solo la oculta: la separación sigue. En la barra de estado aparecen el porcentaje y **Ver progreso**, para volver a abrirla (también en **IA → Mostrar progreso de la separación**).
+   - Al terminar aparecen todas las pistas y la ventana se cierra sola.
+
+   El modelo se elige en el mismo menú:
    - `htdemucs`: 4 pistas.
    - `htdemucs_ft`: 4 pistas, más calidad y más lento.
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
