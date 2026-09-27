@@ -3,7 +3,9 @@
 
 #include "Audio/AudioEngine.h"
 #include "UI/StemLabLookAndFeel.h"
+#include "UI/SeparationWindow.h"
 #include "UI/TrackListView.h"
+#include "AI/DemucsSeparator.h"
 #include "Utils/Strings.h"
 
 // Interfaz sin dispositivo de audio: añadir, reordenar y hacer zoom. Guarda
@@ -73,10 +75,81 @@ namespace
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
+    void testSeparationWindow()
+    {
+        section ("Ventana de la separación: esfera y pistas que van apareciendo");
+
+        CHECK (near (SeparationView::appearanceThreshold (0, 4), 0.2, 1e-9) && near (SeparationView::appearanceThreshold (3, 4), 0.8, 1e-9),
+               "con 4 pistas aparecen al 20, 40, 60 y 80 %");
+
+        DemucsSeparator separator (DemucsSeparator::findDefaultSettings());
+        CHECK (separator.getExpectedStems() == juce::StringArray ("vocals", "drums", "bass", "other"), "htdemucs: 4 pistas");
+        separator.setCurrentModel ("htdemucs_6s");
+        CHECK (separator.getExpectedStems().size() == 6 && separator.getExpectedStems().contains ("guitar"), "htdemucs_6s: 6 pistas");
+
+        StemLabLookAndFeel lookAndFeel;
+        juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+
+        {
+            std::vector<SeparationView::Stem> stems;
+
+            for (const auto* id : { "vocals", "drums", "bass", "other" })
+                stems.push_back ({ stemDisplayName (id), trackColourFor (stemDisplayName (id), 0) });
+
+            SeparationView view ("Mi canción"_u8, trackColourFor ("Mi canción"_u8, 0), stems);
+            double progress = -1.0;
+            auto cancelled = false;
+            view.getProgress = [&] { return progress; };
+            view.getStatus = [] { return juce::String ("Separando instrumentos (cpu)..."); };
+            view.onCancel = [&] { cancelled = true; };
+
+            const auto runFor = [&] (double seconds) { for (double t = 0.0; t < seconds; t += 1.0 / 60.0) view.advance (1.0 / 60.0); };
+
+            runFor (1.0);
+            CHECK (view.getNumVisibleStems() == 0, "sin porcentaje todavía (cargando el modelo): solo la esfera");
+            saveSnapshot (view.createComponentSnapshot (view.getLocalBounds()), "separacion-0.png");
+
+            progress = 0.1;
+            runFor (0.5);
+            CHECK (view.getNumVisibleStems() == 0, "al 10 %: ninguna pista todavía");
+
+            progress = 0.25;
+            runFor (0.5);
+            CHECK (view.getNumVisibleStems() == 1, "al 25 %: aparece la primera (Voz)");
+
+            progress = 0.65;
+            runFor (1.2);
+            CHECK (view.getNumVisibleStems() == 3, "al 65 %: tres pistas");
+            saveSnapshot (view.createComponentSnapshot (view.getLocalBounds()), "separacion-65.png");
+
+            view.setFinished (true);
+            runFor (1.2);
+            CHECK (view.getNumVisibleStems() == 4, "al terminar bien aparecen todas");
+            saveSnapshot (view.createComponentSnapshot (view.getLocalBounds()), "separacion-fin.png");
+
+            if (auto* button = dynamic_cast<juce::Button*> (view.getChildComponent (0)))
+            {
+                CHECK (! button->isVisible(), "al terminar ya no se puede cancelar");
+            }
+
+            SeparationView other ("Otra", juce::Colours::orange, stems);
+            other.getProgress = [] { return 0.5; };
+            other.onCancel = [&] { cancelled = true; };
+            other.advance (0.1);
+            if (auto* button = dynamic_cast<juce::Button*> (other.getChildComponent (0)))
+                button->triggerClick();
+            runLoopUntil ([&] { return cancelled; }, 1000);
+            CHECK (cancelled, "el botón Cancelar avisa para cancelar la separación");
+        }
+
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+    }
 }
 
 void runUiTests()
 {
+    testSeparationWindow();
+
     section ("Colores de las pistas");
     CHECK (trackColourFor ("Grabación 1"_u8, 0) != Palette::record && trackColourFor ("Grabación 3"_u8, 5) == trackColourFor ("Grabación 1"_u8, 0),
            "las pistas de grabación tienen su color propio, que no es el rojo de 'grabando'");
