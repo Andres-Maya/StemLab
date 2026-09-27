@@ -23,6 +23,10 @@ else()
         GIT_SHALLOW    TRUE
         GIT_PROGRESS   TRUE)
     FetchContent_MakeAvailable(JUCE)
+
+    # Grabar sin la supresión de ruido / control de ganancia de Windows (modo RAW).
+    include(cmake/PatchJuceRawCapture.cmake)
+    stemlab_patch_juce_raw_capture("${juce_SOURCE_DIR}")
 endif()
 
 # ----------------------------------------------------------------------------
