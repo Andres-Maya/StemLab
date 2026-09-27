@@ -11,6 +11,14 @@ namespace
 
 juce::Result ProjectSerializer::write (const Project& project, const ProjectDocument& document)
 {
+    if (! project.getProjectFile().replaceWithText (toJson (project, document)))
+        return juce::Result::fail ("No se pudo escribir " + project.getProjectFile().getFullPathName());
+
+    return juce::Result::ok();
+}
+
+juce::String ProjectSerializer::toJson (const Project& project, const ProjectDocument& document)
+{
     juce::Array<juce::var> tracks;
 
     for (const auto& track : document.tracks)
@@ -42,12 +50,7 @@ juce::Result ProjectSerializer::write (const Project& project, const ProjectDocu
     root->setProperty ("masterVolume", document.masterVolumeDb);
     root->setProperty ("tracks", tracks);
 
-    const auto json = juce::JSON::toString (juce::var (root), false);
-
-    if (! project.getProjectFile().replaceWithText (json))
-        return juce::Result::fail ("No se pudo escribir " + project.getProjectFile().getFullPathName());
-
-    return juce::Result::ok();
+    return juce::JSON::toString (juce::var (root), false);
 }
 
 juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& project, ProjectDocument& document)

@@ -47,7 +47,22 @@ void ProjectManager::newProject()
     if (const auto result = project.createFolderStructure(); result.failed())
         DBG ("No se pudo crear la carpeta de la sesion: " << result.getErrorMessage());
 
+    markSaved();
     sendChangeMessage();
+}
+
+bool ProjectManager::hasUnsavedChanges() const
+{
+    // Mientras se carga audio la descripción está incompleta: no se compara.
+    if (isLoading())
+        return false;
+
+    return ProjectSerializer::toJson (project, describe()) != savedSnapshot;
+}
+
+void ProjectManager::markSaved()
+{
+    savedSnapshot = ProjectSerializer::toJson (project, describe());
 }
 
 void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callback onDone)
@@ -74,7 +89,15 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
     project.createFolderStructure();
 
     sendChangeMessage();
-    loadTracks (requestsFrom (document), std::move (onDone));
+
+    // Recién abierto = sin cambios (la "foto" se toma cuando termina de cargar).
+    loadTracks (requestsFrom (document), [this, onDone = std::move (onDone)] (juce::Result result)
+    {
+        markSaved();
+
+        if (onDone != nullptr)
+            onDone (result);
+    });
 }
 
 juce::Result ProjectManager::save()
@@ -85,7 +108,12 @@ juce::Result ProjectManager::save()
     if (const auto result = project.createFolderStructure(); result.failed())
         return result;
 
-    return ProjectSerializer::write (project, describe());
+    const auto result = ProjectSerializer::write (project, describe());
+
+    if (result.wasOk())
+        markSaved();
+
+    return result;
 }
 
 juce::Result ProjectManager::saveAs (const juce::File& newFolder)
@@ -133,6 +161,10 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
         return result;
 
     const auto result = ProjectSerializer::write (project, describe());
+
+    if (result.wasOk())
+        markSaved();
+
     sendChangeMessage();
     return result;
 }
@@ -431,6 +463,9 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
 
 void ProjectManager::reloadAllTracks()
 {
+    // La recarga (por cambio de sample rate) no es un cambio del usuario: si no
+    // había nada sin guardar, tras recargar tampoco debe haberlo.
+    const auto wasClean = ! hasUnsavedChanges();
     const auto document = describe();
     auto requests = requestsFrom (document);
 
@@ -443,7 +478,11 @@ void ProjectManager::reloadAllTracks()
     ++generation;
     engine.getMixer().removeAllTracks();
     sendChangeMessage();
-    loadTracks (std::move (requests), nullptr);
+    loadTracks (std::move (requests), [this, wasClean] (juce::Result)
+    {
+        if (wasClean)
+            markSaved();
+    });
 }
 
 std::vector<ProjectManager::TrackRequest> ProjectManager::requestsFrom (const ProjectDocument& document) const
