@@ -30,21 +30,17 @@ else()
 endif()
 
 # ----------------------------------------------------------------------------
-# Aplicación
+# Código de StemLab (todo menos el punto de entrada). Lo compilan la aplicación
+# y las pruebas automáticas (Tests/).
 # ----------------------------------------------------------------------------
-juce_add_gui_app(StemLab
-    PRODUCT_NAME "StemLab"
-    COMPANY_NAME "StemLab")
-
-target_sources(StemLab PRIVATE
-    Source/Application/Main.cpp
-
+set(STEMLAB_SOURCES
     Source/Audio/AudioClip.cpp
     Source/Audio/AudioEngine.cpp
     Source/Audio/AudioFileLoader.cpp
     Source/Audio/AudioMixer.cpp
     Source/Audio/AudioRecorder.cpp
     Source/Audio/AudioTrack.cpp
+    Source/Audio/MixExporter.cpp
 
     Source/DSP/AudioEffect.cpp
     Source/DSP/CompressorEffect.cpp
@@ -64,6 +60,7 @@ target_sources(StemLab PRIVATE
 
     Source/UI/AudioSettingsComponent.cpp
     Source/UI/EffectPanel.cpp
+    Source/UI/ExportDialog.cpp
     Source/UI/IconButton.cpp
     Source/UI/LevelMeter.cpp
     Source/UI/MainComponent.cpp
@@ -78,31 +75,62 @@ target_sources(StemLab PRIVATE
     Source/UI/TransportBar.cpp
     Source/UI/WaveformView.cpp
 
-    Source/Utils/Parameter.cpp)
+    Source/Utils/Parameter.cpp
+    Source/Utils/PythonEnvironment.cpp)
 
-target_include_directories(StemLab PRIVATE Source)
+# Rutas absolutas: Tests/CMakeLists.txt usa la misma lista.
+set(STEMLAB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+list(TRANSFORM STEMLAB_SOURCES PREPEND "${STEMLAB_ROOT}/")
+
+# Opciones comunes de la aplicación y de las pruebas.
+function(stemlab_configure_target target)
+    target_include_directories(${target} PRIVATE "${STEMLAB_ROOT}/Source")
+
+    target_compile_definitions(${target} PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_WINDOWS_MEDIA_FORMAT=1
+        # Carpeta de los scripts de Python en desarrollo (en una instalación se
+        # busca primero una carpeta "python" junto al ejecutable).
+        "STEMLAB_PYTHON_DIR=\"${STEMLAB_ROOT}/python\"")
+
+    if(MSVC)
+        # Los textos de la interfaz llevan acentos: el código fuente es UTF-8.
+        target_compile_options(${target} PRIVATE /utf-8)
+    endif()
+
+    target_link_libraries(${target}
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_dsp
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+endfunction()
+
+# ----------------------------------------------------------------------------
+# Aplicación
+# ----------------------------------------------------------------------------
+juce_add_gui_app(StemLab
+    PRODUCT_NAME "StemLab"
+    COMPANY_NAME "StemLab")
+
+target_sources(StemLab PRIVATE Source/Application/Main.cpp ${STEMLAB_SOURCES})
+stemlab_configure_target(StemLab)
 
 target_compile_definitions(StemLab PRIVATE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_USE_MP3AUDIOFORMAT=1
-    JUCE_USE_WINDOWS_MEDIA_FORMAT=1
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:StemLab,JUCE_PRODUCT_NAME>"
-    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:StemLab,JUCE_VERSION>"
-    # Carpeta del módulo de IA en desarrollo (en una instalación se busca
-    # primero una carpeta "python" junto al ejecutable).
-    "STEMLAB_PYTHON_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/python\"")
+    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:StemLab,JUCE_VERSION>")
 
-if(MSVC)
-    # Los textos de la interfaz llevan acentos: el código fuente es UTF-8.
-    target_compile_options(StemLab PRIVATE /utf-8)
+# ----------------------------------------------------------------------------
+# Pruebas automáticas (Tests/): cmake --build ... --target StemLabTests
+# y después ctest, o el ejecutable directamente (ver README.md, "Pruebas").
+# ----------------------------------------------------------------------------
+option(STEMLAB_BUILD_TESTS "Compilar las pruebas automáticas (Tests/)" ON)
+
+if(STEMLAB_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests)
 endif()
-
-target_link_libraries(StemLab
-    PRIVATE
-        juce::juce_audio_utils
-        juce::juce_dsp
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
