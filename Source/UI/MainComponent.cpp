@@ -1145,6 +1145,11 @@ void MainComponent::separateInstruments()
 
     separationWindow = std::make_unique<SeparationWindow> (source->getName(), trackColourFor (source->getName(), index), std::move (stems));
     auto& view = separationWindow->getView();
+
+    // El anillo de frecuencias dibuja la propia canción.
+    if (const auto clips = source->getClips(); ! clips.empty() && clips.front().source != nullptr)
+        view.setSourceAudio (clips.front().source, clips.front().sourceOffset, clips.front().length);
+
     view.getProgress = [this] { return ai.getProgress(); };
     view.getStatus = [this] { return ai.getStatus(); };
     view.onCancel = [this] { ai.cancel(); };
