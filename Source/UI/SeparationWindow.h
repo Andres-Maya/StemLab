@@ -2,7 +2,10 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "Audio/AudioClip.h"
+
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace stemlab
@@ -11,7 +14,10 @@ namespace stemlab
     Animación de la separación por IA:
 
       - En el centro, una esfera del color de la pista que se separa. Gira y a
-        su alrededor late un anillo de barras de frecuencia.
+        su alrededor hay un anillo de frecuencias: una línea que forma un
+        círculo y se deforma con picos, con puntos brillantes en los más altos.
+        Dibuja la propia canción: recorre su audio en tiempo real y lo pone en
+        círculo (sin audio usa una señal sintética).
       - Cada cierto porcentaje sale de ella otra esfera, del color de una de
         las pistas que se van a generar (Voz, Batería...). Se coloca alrededor
         y cada una tiene su propia animación (ondas, órbita, arcos, oscilador,
@@ -38,6 +44,10 @@ public:
     std::function<juce::String()> getStatus;
     std::function<void()> onCancel;
 
+    /** Audio de la canción que se separa, para el anillo de frecuencias: el
+        tramo [start, start + length) de source (el fragmento de la pista). */
+    void setSourceAudio (std::shared_ptr<const ClipSource> source, juce::int64 start, juce::int64 length);
+
     /** Al terminar: si fue bien aparecen todas las pistas y el mensaje final. */
     void setFinished (bool succeeded);
 
@@ -49,14 +59,20 @@ public:
     int getNumVisibleStems() const noexcept;
     double getAnimationTime() const noexcept        { return time; }
 
+    /** Nivel (0..1) de cada punto del anillo de frecuencias, empezando por abajo. */
+    const std::vector<float>& getRingLevels() const noexcept    { return ringLevels; }
+    static constexpr int ringPoints = 360;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void visibilityChanged() override;
 
 private:
     void timerCallback() override;
+    void updateRing (double seconds);
 
     void drawMainOrb (juce::Graphics&, juce::Point<float> centre, float radius) const;
+    void drawFrequencyRing (juce::Graphics&, juce::Point<float> centre, float radius) const;
     void drawStemOrb (juce::Graphics&, int index, juce::Point<float> centre, float radius, float alpha) const;
     void drawBeam (juce::Graphics&, juce::Point<float> from, juce::Point<float> to, juce::Colour, float alpha, int index) const;
 
@@ -72,6 +88,11 @@ private:
     bool succeeded = false;
     juce::String status;
     double lastFrameMs = 0.0;
+
+    std::shared_ptr<const ClipSource> audio;
+    juce::int64 audioStart = 0, audioLength = 0;
+    std::vector<float> ringLevels = std::vector<float> (ringPoints, 0.0f);
+    float ringPeak = 0.05f;                         // pico reciente: el anillo se ve igual en canciones bajas o altas
 
     juce::TextButton cancelButton;
 
