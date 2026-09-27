@@ -223,10 +223,14 @@ juce::Result AudioEngine::startRecording (const juce::File& file)
     return result;
 }
 
-juce::int64 AudioEngine::getRecordingClipStart() const noexcept
+std::optional<juce::int64> AudioEngine::getRecordingClipStart() const noexcept
 {
     const auto start = recorder.getStartPosition();
-    return start < 0 ? -1 : start - recordingLatency;
+
+    if (start < 0)
+        return std::nullopt;
+
+    return start - recordingLatency;
 }
 
 RecordingInfo AudioEngine::stopRecording()
