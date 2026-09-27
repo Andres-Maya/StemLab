@@ -143,6 +143,28 @@ namespace
             runLoopUntil ([&] { return cancelled; }, 1000);
             CHECK (cancelled, "el botón Cancelar avisa para cancelar la separación");
 
+            section ("La ventana se anima sola al abrirla");
+
+            {
+                SeparationWindow window ("Mi canción"_u8, trackColourFor ("Mi canción"_u8, 0), stems);
+                auto& live = window.getView();
+                live.getProgress = [] { return 0.3; };
+                window.present();
+                runLoopUntil ([&] { return live.getAnimationTime() > 0.3; }, 3000);
+                CHECK (live.getAnimationTime() > 0.3 && live.getNumVisibleStems() == 1,
+                       "al mostrar la ventana, la animación avanza y lee el progreso (" << live.getAnimationTime() << " s)");
+
+                window.setVisible (false);
+                runLoopUntil ([] { return false; }, 100);
+                const auto hiddenAt = live.getAnimationTime();
+                runLoopUntil ([] { return false; }, 300);
+                CHECK (juce::exactlyEqual (live.getAnimationTime(), hiddenAt), "oculta, no gasta tiempo en animarse");
+
+                window.present();
+                runLoopUntil ([&] { return live.getAnimationTime() > hiddenAt + 0.2; }, 3000);
+                CHECK (live.getAnimationTime() > hiddenAt + 0.2, "al volver a mostrarla sigue animándose");
+            }
+
             section ("Anillo de frecuencias con el audio de la canción");
 
             // Canción de prueba: bombo, bajo, voz (con armónicos) y platillos, 6 s a 48 kHz.
