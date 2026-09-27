@@ -275,35 +275,36 @@ void WaveformView::mouseDrag (const juce::MouseEvent& event)
     const auto samplesPerPixel = visibleLength * dragOriginal.source->sampleRate / getWidth();
     const auto delta = static_cast<juce::int64> (std::llround (dx * samplesPerPixel));
 
-    auto edited = dragOriginal;
+    // Siempre se parte de la lista de antes de arrastrar: si se vuelve atrás,
+    // los clips que se apartaron regresan a su sitio.
+    std::vector<AudioClip> updated;
 
-    // Topes: el final del clip anterior y el principio del siguiente.
-    const auto [lowest, highest] = ClipEditing::freeRangeAround (clipsBeforeDrag, dragOriginal);
-
-    switch (dragMode)
+    if (dragMode == DragMode::move)
     {
-        case DragMode::move:
-            ClipEditing::move (edited, juce::jlimit (lowest, juce::jmax (lowest, highest - edited.length),
-                                                     dragOriginal.timelineStart + delta));
-            break;
+        updated = ClipEditing::moveWithoutOverlap (clipsBeforeDrag, dragOriginal.id, dragOriginal.timelineStart + delta);
+    }
+    else
+    {
+        // Recortar: el borde se detiene en el vecino.
+        const auto [lowest, highest] = ClipEditing::freeRangeAround (clipsBeforeDrag, dragOriginal);
+        auto edited = dragOriginal;
 
-        case DragMode::trimStart:   ClipEditing::trimStart (edited, juce::jmax (lowest, dragOriginal.timelineStart + delta)); break;
-        case DragMode::trimEnd:     ClipEditing::trimEnd (edited, juce::jmin (highest, dragOriginal.getEnd() + delta)); break;
-        case DragMode::none:
-        case DragMode::seek:        return;
+        if (dragMode == DragMode::trimStart)
+            ClipEditing::trimStart (edited, juce::jmax (lowest, dragOriginal.timelineStart + delta));
+        else
+            ClipEditing::trimEnd (edited, juce::jmin (highest, dragOriginal.getEnd() + delta));
+
+        updated = clipsBeforeDrag;
+
+        if (auto* clip = ClipEditing::find (updated, edited.id))
+            *clip = edited;
     }
 
     // Se aplica a la pista en cada movimiento para oír el resultado al momento.
-    auto updated = track.getClips();
-
-    if (auto* clip = ClipEditing::find (updated, edited.id))
-    {
-        *clip = edited;
-        track.setClips (updated);
-        clips = std::move (updated);
-        dragChanged = true;
-        repaint();
-    }
+    track.setClips (updated);
+    clips = std::move (updated);
+    dragChanged = true;
+    repaint();
 }
 
 void WaveformView::mouseUp (const juce::MouseEvent&)
