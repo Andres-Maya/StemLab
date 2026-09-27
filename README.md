@@ -23,17 +23,20 @@ Source/
                 AudioTrack          audio en memoria + vol/pan/mute/solo + efectos
                 AudioRecorder       entrada → WAV 24 bits sin bloquear el audio
                 AudioFileLoader     decodifica + remuestrea (hilo de trabajo)
+                MixExporter         render offline de la mezcla a WAV / MP3
   DSP/          AudioEffect         interfaz común de los efectos
                 Gain · Saturation · Equalizer · Compressor · Limiter · EffectChain
   AI/           AudioSeparator      interfaz de cualquier motor de separación
                 DemucsSeparator     lanza python/stemlab_separate.py
                 AIProcessManager    ejecuta la separación en un hilo propio
-  Project/      Project · ProjectSerializer (project.json) · ProjectManager
+  Project/      Project · ProjectSerializer (project.json) · ProjectManager (+ deshacer/rehacer)
   UI/           MainWindow · MainComponent · TransportBar · TrackListView · TrackView
-                WaveformView · TimeRuler · MixerView · EffectPanel · StatusBar ...
-  Utils/        Parameter (valor atómico UI ↔ audio) · Strings
+                WaveformView · TimeRuler · MixerView · EffectPanel · ExportDialog ...
+  Utils/        Parameter (valor atómico UI ↔ audio) · PythonEnvironment · Strings
 python/
   stemlab_separate.py               Demucs: carga, preprocesado, inferencia, stems
+  stemlab_encode_mp3.py             codifica a MP3 la mezcla exportada (LAME)
+Tests/                              pruebas automáticas (ver "Pruebas")
 ```
 
 ### Reglas de hilos (lo más importante del diseño)
@@ -44,6 +47,7 @@ python/
 | **Mensajes** (UI) | interfaz, crear/quitar pistas, guardar `project.json` | decodificar audio largo, ejecutar la IA |
 | **Loader** (`ProjectManager`) | decodificar y remuestrear archivos | tocar la UI o la lista de pistas |
 | **IA** (`AIProcessManager`) | lanzar Python y leer su progreso | tocar el motor de audio |
+| **Exportación** (`ExportDialog`) | renderizar una copia de la mezcla y escribir el archivo | tocar el motor de audio |
 | **Grabación** (`ThreadedWriter`) | volcar el FIFO al WAV | — |
 
 Cómo se cumple:
@@ -53,6 +57,8 @@ Cómo se cumple:
 - **Vida de las pistas**: son `shared_ptr` y el hilo de audio nunca copia uno, así que una pista nunca se destruye en ese hilo.
 - **Cabezal único**: todas las pistas leen de la misma posición (`Transport`), así que los stems están alineados a nivel de muestra. Los saltos se piden con `pendingSeek` y los aplica el hilo de audio.
 - **Audio en memoria**: cada pista se decodifica completa (estéreo y a la frecuencia del dispositivo) en el hilo loader. El hilo de audio solo copia muestras. Si cambia la frecuencia del dispositivo, las pistas se recargan solas.
+- **Exportación**: `MixExporter` copia las pistas (clips, volumen, paneo, mute, solo, efectos y master) en el hilo de mensajes y renderiza esa copia en su propio hilo. Nunca comparte estado con el hilo de audio, así que se puede seguir escuchando mientras exporta. El audio de los clips se comparte sin copiar porque es de solo lectura.
+- **Deshacer/rehacer**: `ProjectManager` guarda en un `juce::UndoManager` la lista de clips de antes y de después de cada edición. Los clips comparten el audio, así que cada paso ocupa muy poco.
 
 ### Comunicación C++ ↔ Python
 
@@ -85,7 +91,7 @@ MiProyecto/
   audio/            copias de los archivos importados
   stems/            resultados de la IA
   recordings/       grabaciones
-  exports/          (reservado para la exportación)
+  exports/          mezclas exportadas (WAV / MP3)
 ```
 
 Hasta el primer **Guardar como**, la sesión vive en `%TEMP%\StemLab\Sesion-...`.
@@ -143,6 +149,8 @@ StemLab busca el intérprete en este orden:
 
 La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg** es opcional: solo se usa para formatos que libsndfile no lee, como m4a o aac.
 
+El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así que StemLab escribe un WAV temporal y lo codifica `python/stemlab_encode_mp3.py` con LAME (paquete `lameenc`, incluido en `requirements.txt`). Exportar a WAV no necesita Python.
+
 ## Uso
 
 1. **Archivo → Importar audio…**, o arrastra un archivo a la ventana.
@@ -152,27 +160,35 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
 3. Cada pista tiene Mute, Solo, volumen y paneo. Al seleccionarla, el mezclador muestra su canal y su cadena de efectos.
 4. **Grabar:** selecciona una pista (clic en ella) y pulsa el botón rojo ⏺ del transporte o **R**. Si no hay ninguna pista seleccionada, se crea una nueva. Mientras graba, la franja de la pista se pone roja.
-   - Para grabar aparte de la canción, primero crea una pista con el botón **+** (queda seleccionada). Grabar sobre una pista con audio lo tapa en esa zona.
+   - La grabación empieza en el cabezal. Para grabar **encima de audio que ya está en la pista**, haz clic sobre ese audio: el fragmento queda seleccionado, la pista también y el cabezal se coloca ahí. Después pulsa **R**. La toma nueva se dibuja y suena por encima de lo que había en esa zona, y el resto se conserva. Con **Ctrl+Z** se quita la toma.
+   - Para grabar aparte de la canción, primero crea una pista con el botón **+** (queda seleccionada).
+   - Mientras se graba, el cabezal no se puede mover: la toma ocupa un tramo continuo desde donde empezó.
    - Pausar (**R** o Espacio) y volver a pulsar **R** sigue grabando **en la misma pista**, como un fragmento nuevo justo después del anterior.
    - La entrada se elige en **Audio → Configuración de audio**, y la grabación se compensa por la latencia del dispositivo.
    - **Entrada** (barra superior): ganancia del micrófono antes de grabar, +18 dB por defecto, con su medidor. El medidor se mueve aunque no grabes, para ajustar el nivel antes. Un limitador suave evita el recorte brusco.
    - En Windows se graba en **modo RAW**, sin la supresión de ruido ni el control automático de ganancia del sistema o del controlador. Esos efectos atenuaban o silenciaban los sonidos constantes. JUCE no pide este modo, así que `cmake/PatchJuceRawCapture.cmake` aplica un pequeño parche a la copia de JUCE descargada. Si el micrófono no admite RAW, se graba como antes.
    - En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
 5. **Editar fragmentos** (clips). La edición no destructiva nunca modifica los archivos de audio:
-   - **Clic** en un fragmento lo selecciona. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
+   - **Clic** en un fragmento lo selecciona y coloca el cabezal en ese punto. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
    - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
    - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
+   - **Deshacer / rehacer:** **Ctrl+Z** deshace y **Ctrl+Y** (o **Ctrl+Shift+Z**) rehace. También están en el menú **Editar**, que muestra qué se va a deshacer. Se puede deshacer dividir, cortar, pegar, eliminar, mover, recortar, grabar un fragmento y eliminar una pista. El historial se vacía al crear o abrir un proyecto.
 6. **Pistas:**
    - **Añadir:** al pasar el ratón por una pista aparece un **+** en un círculo, centrado sobre su borde inferior en la esquina derecha de la cabecera. Añade una pista justo debajo. Si no hay pistas, el **+** está arriba del todo.
    - **Mover:** arrastra la cabecera (nombre o zona vacía) arriba o abajo, o usa **Alt+↑ / Alt+↓**.
    - **Cambiar el nombre:** doble clic en el nombre, **F2**, o clic derecho en la cabecera.
-   - **Eliminar:** la **×** de cada pista, tras pedir confirmación.
+   - **Eliminar:** la **×** de cada pista, tras pedir confirmación. **Ctrl+Z** la recupera con sus fragmentos, volumen y efectos.
 7. **Zoom y desplazamiento:**
    - **Ctrl + rueda** acerca o aleja alrededor del ratón.
    - **Shift + rueda**, o la rueda horizontal del touchpad, desplaza a los lados. También sirve la barra inferior.
    - También en **Proyecto → Vista**.
    - Durante la reproducción, la vista sigue al cabezal.
-8. **Archivo → Guardar proyecto como…** Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
+8. **Archivo → Exportar mezcla…** (**Ctrl+E**) guarda la canción completa tal como suena: volumen, paneo, mute, solo, efectos y master.
+   - Formatos: **WAV** de 24 bits (recomendado), 16 bits o 32 bits en coma flotante, y **MP3** a 320, 192 o 128 kbps. El MP3 necesita el entorno de Python.
+   - Se exporta desde el principio hasta el final del último fragmento. Por defecto se guarda en la carpeta `exports/` del proyecto. Si el proyecto aún no se ha guardado, se guarda en `Documentos\StemLab`.
+   - La ventana de progreso tiene **Cancelar**. Si cancelas, no queda ningún archivo a medias.
+   - Si la mezcla pasa de 0 dBFS, StemLab avisa de que se ha recortado. El WAV de 32 bits en coma flotante no recorta.
+9. **Archivo → Guardar proyecto como…** Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
 
 Atajos de teclado:
 
@@ -182,6 +198,8 @@ Atajos de teclado:
 | Inicio | ir al principio |
 | R | grabar / pausar la grabación (en la pista seleccionada) |
 | S | dividir el fragmento en el cabezal |
+| Ctrl+Z | deshacer |
+| Ctrl+Y / Ctrl+Shift+Z | rehacer |
 | Ctrl+X / C / V | cortar / copiar / pegar fragmento |
 | Supr | eliminar el fragmento seleccionado |
 | Ctrl+T | añadir pista (debajo de la seleccionada) |
@@ -190,6 +208,30 @@ Atajos de teclado:
 | Ctrl+Supr | eliminar la pista seleccionada |
 | Ctrl+N / O / S / I | nuevo / abrir / guardar / importar |
 | Ctrl+Shift+S | guardar como |
+| Ctrl+E | exportar la mezcla (WAV / MP3) |
+
+---
+
+## Pruebas
+
+Las pruebas automáticas están en `Tests/`. Son un ejecutable de consola, `StemLabTests`, que compila el mismo código que la aplicación. Se compilan con el proyecto, salvo que configures con `-DSTEMLAB_BUILD_TESTS=OFF`.
+
+```powershell
+cmake --build --preset debug --target StemLabTests
+ctest --test-dir out\build\vs2026 -C Debug                          # pruebas rápidas
+.\out\build\vs2026\Tests\StemLabTests_artefacts\Debug\StemLabTests.exe --all
+```
+
+| Opción | Qué prueba | Necesita |
+|---|---|---|
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer, grabar encima de audio, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| `--device` | grabar de verdad (incluida una toma encima de otra), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
+| `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
+| `--all` | todo lo anterior | lo anterior |
+| `--acoustic` | reproduce ruido por los altavoces y comprueba que el micrófono no lo atenúa (modo RAW) | altavoces y micrófono; hace ruido |
+| `--output <carpeta>` | dónde se dejan WAV, MP3, proyectos y capturas PNG | por defecto `test-output/` junto al ejecutable |
+
+Cada comprobación imprime `ok:` o `FALLO:`. Al final aparece `RESULTADO: n/m`, y el código de salida es 0 solo si todo pasó. Las capturas de la interfaz (`addrow-*.png`, `lane*.png`, `clips.png`) sirven para revisarla a ojo.
 
 ---
 
@@ -197,10 +239,9 @@ Atajos de teclado:
 
 - **Memoria**: el audio se guarda en memoria como float estéreo, unos 23 MB por minuto y pista a 48 kHz. Para canciones muy largas conviene leer del disco en streaming (`BufferingAudioSource`).
 - **Saturación sin sobremuestreo**: con drive alto aparece aliasing. Añadir `juce::dsp::Oversampling` introduce latencia, así que antes hace falta compensar la latencia entre pistas.
+- **Deshacer/rehacer** cubre los fragmentos y la eliminación de pistas. Los cambios de volumen, paneo, efectos, nombre u orden de las pistas todavía no se deshacen.
 - **Pendiente**:
-  - Exportar la mezcla a WAV con un render offline en `exports/`.
+  - Exportar solo un tramo (entre marcadores) o cada pista por separado (stems).
   - `SpectrogramView` con FFT.
-  - Deshacer/rehacer la edición de fragmentos con `UndoManager`.
   - Arrastrar fragmentos entre pistas y ajuste a la rejilla de compases (BPM).
   - Reverb, Delay, Pitch Shift y Time Stretching.
-  - Pruebas unitarias del DSP y del serializador.
