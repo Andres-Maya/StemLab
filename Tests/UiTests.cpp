@@ -4,6 +4,7 @@
 #include "Audio/AudioEngine.h"
 #include "UI/StemLabLookAndFeel.h"
 #include "UI/TrackListView.h"
+#include "Utils/Strings.h"
 
 // Interfaz sin dispositivo de audio: añadir, reordenar y hacer zoom. Guarda
 // capturas PNG en la carpeta de salida para revisarlas a ojo.
@@ -76,6 +77,11 @@ namespace
 
 void runUiTests()
 {
+    section ("Colores de las pistas");
+    CHECK (trackColourFor ("Grabación 1"_u8, 0) != Palette::record && trackColourFor ("Grabación 3"_u8, 5) == trackColourFor ("Grabación 1"_u8, 0),
+           "las pistas de grabación tienen su color propio, que no es el rojo de 'grabando'");
+    CHECK (trackColourFor ("Grabación 1"_u8, 0) != Palette::accent, "ni el del cabezal");
+
     snapshotAddTrackRow();
 }
 }
