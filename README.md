@@ -126,6 +126,13 @@ python\.venv\Scripts\python -m pip install -r python\requirements.txt
 python\.venv\Scripts\python python\stemlab_separate.py --check
 ```
 
+> **Importante:** crea el entorno con un Python que exista de verdad en tu disco (por ejemplo,
+> uno de python.org). Un entorno virtual solo guarda la ruta del Python con el que se creó; si ese
+> Python desaparece o se instaló dentro de otra aplicación empaquetada (como la app de escritorio de
+> Claude, que virtualiza `AppData\Roaming`), StemLab mostrará *"Python terminó con código 103: No
+> Python at …"*. Alternativa portátil: copiar un Python autónomo (p. ej. los de `uv`) a
+> `python/runtime/` (ignorada por Git) y apuntar `home` de `python/.venv/pyvenv.cfg` a esa carpeta.
+
 StemLab busca el intérprete en este orden:
 
 1. La variable de entorno `STEMLAB_PYTHON`.
