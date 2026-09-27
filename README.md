@@ -150,6 +150,7 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
 3. Cada pista tiene Mute, Solo, volumen y paneo. Al seleccionarla, el mezclador muestra su canal y su cadena de efectos.
 4. ⏺ graba una pista nueva desde la entrada elegida en **Audio → Configuración de audio**. La grabación se compensa por la latencia del dispositivo.
+   En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
 5. **Archivo → Guardar proyecto como…**
 
 Atajos de teclado:

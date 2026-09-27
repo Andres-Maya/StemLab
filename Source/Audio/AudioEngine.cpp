@@ -11,6 +11,7 @@ AudioEngine::AudioEngine()
 
 AudioEngine::~AudioEngine()
 {
+    deviceManager.removeChangeListener (this);
     deviceManager.removeAudioCallback (this);
     deviceManager.closeAudioDevice();
     recorder.stop();
@@ -23,7 +24,81 @@ juce::String AudioEngine::initialise (const juce::XmlElement* savedDeviceState)
     // dispositivo se abre igualmente y solo falla la grabación.
     const auto error = deviceManager.initialise (2, 2, savedDeviceState, true);
     deviceManager.addAudioCallback (this);
+
+    // El AudioDeviceManager avisa cuando cambia la lista de dispositivos del
+    // sistema (en Windows, también cuando cambia la salida predeterminada).
+    deviceManager.addChangeListener (this);
+    updateFollowedOutput();
+
     return error;
+}
+
+//==============================================================================
+void AudioEngine::setFollowSystemOutput (bool shouldFollow)
+{
+    followSystemOutput = shouldFollow;
+
+    // Olvidar la última predeterminada vista: al activarlo se cambia a ella ya.
+    knownSystemOutput = {};
+    updateFollowedOutput();
+}
+
+juce::String AudioEngine::getSystemDefaultOutputName() const
+{
+    // WASAPI coloca la salida predeterminada de Windows en el índice que
+    // devuelve getDefaultDeviceIndex (el 0).
+    if (deviceManager.getCurrentAudioDevice() != nullptr)
+    {
+        if (auto* type = deviceManager.getCurrentDeviceTypeObject())
+        {
+            const auto names = type->getDeviceNames (false);
+            const auto index = type->getDefaultDeviceIndex (false);
+
+            if (juce::isPositiveAndBelow (index, names.size()))
+                return names[index];
+        }
+    }
+
+    return {};
+}
+
+void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    updateFollowedOutput();
+}
+
+void AudioEngine::updateFollowedOutput()
+{
+    if (! followSystemOutput || applyingSystemOutput)
+        return;
+
+    const auto systemOutput = getSystemDefaultOutputName();
+
+    if (systemOutput.isEmpty())
+        return;
+
+    auto setup = deviceManager.getAudioDeviceSetup();
+    const auto systemChanged = systemOutput != knownSystemOutput;
+    knownSystemOutput = systemOutput;
+
+    if (setup.outputDeviceName == systemOutput)
+        return;
+
+    if (! systemChanged)
+    {
+        // Windows no cambió de salida pero el dispositivo sí: lo eligió el
+        // usuario en la configuración (incluso "ninguna"). Se respeta.
+        followSystemOutput = false;
+        return;
+    }
+
+    setup.outputDeviceName = systemOutput;
+
+    const juce::ScopedValueSetter<bool> applying (applyingSystemOutput, true);
+    const auto error = deviceManager.setAudioDeviceSetup (setup, true);
+
+    if (error.isNotEmpty())
+        DBG ("No se pudo cambiar a la salida del sistema: " << error);
 }
 
 //==============================================================================

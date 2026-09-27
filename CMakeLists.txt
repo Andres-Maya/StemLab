@@ -57,6 +57,7 @@ target_sources(StemLab PRIVATE
     Source/Project/ProjectManager.cpp
     Source/Project/ProjectSerializer.cpp
 
+    Source/UI/AudioSettingsComponent.cpp
     Source/UI/EffectPanel.cpp
     Source/UI/IconButton.cpp
     Source/UI/LevelMeter.cpp
