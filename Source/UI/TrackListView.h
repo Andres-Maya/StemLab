@@ -41,7 +41,6 @@ public:
     std::function<void (std::shared_ptr<AudioTrack>, juce::uint32 clipId, double seconds)> onContextMenu;
     std::function<void()> onClipsEdited;
     std::function<void()> onAddTrack;
-    std::function<void()> onRemoveTrack;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -67,6 +66,23 @@ private:
         double timelineLength = 60.0;
     };
 
+    /** "+" en un círculo con una línea, debajo de la última pista: añade una
+        pista nueva. Sin pistas va arriba del todo con la línea encendida. */
+    struct AddTrackRow final : public juce::Component,
+                               public juce::SettableTooltipClient
+    {
+        static constexpr int height = 32;
+
+        void paint (juce::Graphics&) override;
+        void mouseEnter (const juce::MouseEvent&) override   { hovered = true; repaint(); }
+        void mouseExit (const juce::MouseEvent&) override    { hovered = false; repaint(); }
+        void mouseUp (const juce::MouseEvent&) override;
+
+        std::function<void()> onClick;
+        bool highlighted = false;   // sin pistas: línea brillante
+        bool hovered = false;
+    };
+
     /** Línea del cabezal, transparente a los clics. */
     struct Playhead final : public juce::Component
     {
@@ -86,11 +102,9 @@ private:
     AudioEngine& engine;
     juce::AudioThumbnailCache thumbnailCache { 32 };
 
-    juce::TextButton addTrackButton { "+ Pista" };
-    juce::TextButton removeTrackButton { "- Pista" };
-
     // content va antes que viewport: el viewport se destruye primero y lo suelta.
     Content content;
+    AddTrackRow addTrackRow;
     RecordingLane recordingLane;
     Playhead playhead;
     TimeRuler ruler;

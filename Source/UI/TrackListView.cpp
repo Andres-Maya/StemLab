@@ -19,10 +19,55 @@ void TrackListView::Content::paint (juce::Graphics& g)
     {
         g.setColour (Palette::textDim);
         g.setFont (juce::FontOptions (16.0f));
-        g.drawFittedText ("Arrastra aquí una canción o usa Archivo > Importar audio...\n"
+        g.drawFittedText ("Pulsa + para añadir una pista, arrastra aquí una canción o usa Archivo > Importar audio...\n"
                           "Después, IA > Separar instrumentos. Para grabar, pulsa R."_u8,
-                          getLocalBounds().reduced (20), juce::Justification::centred, 3);
+                          getLocalBounds().withTrimmedTop (AddTrackRow::height).reduced (20),
+                          juce::Justification::centred, 3);
     }
+}
+
+void TrackListView::AddTrackRow::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    const auto centreY = bounds.getCentreY();
+    constexpr float radius = 11.0f;
+    const auto centreX = 16.0f + radius;
+    const auto lit = highlighted || hovered;
+
+    // Línea desde el círculo hasta el final; encendida (con halo) si no hay
+    // pistas o al pasar el ratón.
+    const auto lineStart = centreX + radius + 6.0f;
+    const auto lineWidth = bounds.getRight() - lineStart - 8.0f;
+
+    if (lit)
+    {
+        for (int i = 3; i >= 1; --i)
+        {
+            g.setColour (Palette::accent.withAlpha (0.07f * static_cast<float> (4 - i)));
+            g.fillRoundedRectangle (lineStart, centreY - 1.0f - static_cast<float> (i) * 2.0f,
+                                    lineWidth, 2.0f + static_cast<float> (i) * 4.0f, 3.0f);
+        }
+
+        g.setColour (Palette::accent.withAlpha (0.35f));
+        g.drawEllipse (centreX - radius - 3.0f, centreY - radius - 3.0f, (radius + 3.0f) * 2.0f, (radius + 3.0f) * 2.0f, 2.0f);
+    }
+
+    g.setColour (lit ? Palette::accent : Palette::outline);
+    g.fillRect (lineStart, centreY - (lit ? 1.0f : 0.5f), lineWidth, lit ? 2.0f : 1.0f);
+
+    // Círculo con el "+".
+    g.setColour (lit ? Palette::accent : Palette::panelLight);
+    g.fillEllipse (centreX - radius, centreY - radius, radius * 2.0f, radius * 2.0f);
+
+    g.setColour (lit ? Palette::background : Palette::text);
+    g.fillRoundedRectangle (centreX - 5.5f, centreY - 1.0f, 11.0f, 2.0f, 1.0f);
+    g.fillRoundedRectangle (centreX - 1.0f, centreY - 5.5f, 2.0f, 11.0f, 1.0f);
+}
+
+void TrackListView::AddTrackRow::mouseUp (const juce::MouseEvent& event)
+{
+    if (getLocalBounds().contains (event.getPosition()) && onClick != nullptr)
+        onClick();
 }
 
 void TrackListView::RecordingLane::paint (juce::Graphics& g)
@@ -97,13 +142,10 @@ void TrackListView::Playhead::paint (juce::Graphics& g)
 TrackListView::TrackListView (AudioEngine& audioEngine)
     : engine (audioEngine)
 {
-    addTrackButton.setTooltip ("Añadir una pista vacía (Ctrl+T)"_u8);
-    addTrackButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack(); };
-    addAndMakeVisible (addTrackButton);
-
-    removeTrackButton.setTooltip ("Eliminar la pista seleccionada");
-    removeTrackButton.onClick = [this] { if (onRemoveTrack != nullptr) onRemoveTrack(); };
-    addAndMakeVisible (removeTrackButton);
+    addTrackRow.setTooltip ("Añadir una pista debajo (Ctrl+T)"_u8);
+    addTrackRow.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    addTrackRow.onClick = [this] { if (onAddTrack != nullptr) onAddTrack(); };
+    content.addAndMakeVisible (addTrackRow);
 
     ruler.onSeek = [this] (double seconds) { seekTo (seconds); };
     addAndMakeVisible (ruler);
@@ -163,6 +205,8 @@ void TrackListView::refresh()
     // Las filas de pistas eliminadas se destruyen aquí (y liberan su pista).
     rows = std::move (newRows);
     content.isEmpty = rows.empty();
+    addTrackRow.highlighted = rows.empty();
+    addTrackRow.repaint();
     recordingLane.toFront (false);
     playhead.toFront (false);
 
@@ -236,10 +280,7 @@ void TrackListView::resized()
 {
     auto bounds = getLocalBounds();
     auto top = bounds.removeFromTop (rulerHeight);
-
-    auto buttons = top.removeFromLeft (TrackView::headerWidth).reduced (6, 2);
-    addTrackButton.setBounds (buttons.removeFromLeft (buttons.getWidth() / 2).withTrimmedRight (3));
-    removeTrackButton.setBounds (buttons.withTrimmedLeft (3));
+    top.removeFromLeft (TrackView::headerWidth);
 
     ruler.setBounds (top);
     viewport.setBounds (bounds);
@@ -250,7 +291,7 @@ void TrackListView::layoutRows()
 {
     const auto width = viewport.getMaximumVisibleWidth();
     const auto height = juce::jmax (viewport.getMaximumVisibleHeight(),
-                                    static_cast<int> (rows.size()) * TrackView::preferredHeight);
+                                    static_cast<int> (rows.size()) * TrackView::preferredHeight + AddTrackRow::height);
 
     content.setSize (width, height);
 
@@ -261,6 +302,9 @@ void TrackListView::layoutRows()
         row->setBounds (0, y, width, TrackView::preferredHeight);
         y += TrackView::preferredHeight;
     }
+
+    // El "+" va justo debajo de la última pista (arriba del todo si no hay).
+    addTrackRow.setBounds (0, y, width, AddTrackRow::height);
 
     playhead.setBounds (TrackView::headerWidth, 0, juce::jmax (0, width - TrackView::headerWidth), height);
 
