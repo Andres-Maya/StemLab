@@ -91,6 +91,7 @@ private:
     AIProcessManager& ai;
 
     juce::MenuBarComponent menuBar;
+    juce::TooltipWindow tooltipWindow { this, 600 };   // sin ella no se muestra ningún tooltip
     TransportBar transportBar;
     TrackListView trackList;
     MixerView mixer;
