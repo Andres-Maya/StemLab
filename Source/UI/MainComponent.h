@@ -36,7 +36,14 @@ public:
     /** Cerrar StemLab: si hay cambios sin guardar pregunta antes. */
     void requestQuit();
 
-    MainComponent (AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai);
+    /** Abrir un proyecto (.stemlab, o un project.json antiguo) preguntando antes
+        si hay cambios sin guardar. Lo usan el menú, "Abrir reciente", soltar el
+        archivo en la ventana y abrir StemLab con un archivo ("Abrir con"). */
+    void openProjectFile (const juce::File& file);
+
+    /** settings (opcional) guarda la lista de proyectos recientes. */
+    MainComponent (AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai,
+                   juce::PropertiesFile* settings = nullptr);
     ~MainComponent() override;
 
     void paint (juce::Graphics&) override;
@@ -61,6 +68,9 @@ private:
     void openProject();
     void saveProject();
     void saveProjectAs (std::function<void()> onSaved = nullptr);
+    void loadProject (const juce::File& file);
+    /** Añade el proyecto abierto a "Abrir reciente". */
+    void rememberProject();
     void importAudio();
     void exportMix();
     void deleteSelectedTrack();
@@ -126,6 +136,9 @@ private:
     StatusBar statusBar;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+    juce::PropertiesFile* settings = nullptr;
+    juce::RecentlyOpenedFilesList recentProjects;
 
     std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
     std::shared_ptr<AudioTrack> trackClipboard;     // copia de la pista copiada o cortada
