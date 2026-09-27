@@ -172,12 +172,14 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - **Clic** en un fragmento lo selecciona y coloca el cabezal en ese punto. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
    - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
    - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
-   - **Deshacer / rehacer:** **Ctrl+Z** deshace y **Ctrl+Y** (o **Ctrl+Shift+Z**) rehace. También están en el menú **Editar**, que muestra qué se va a deshacer. Se puede deshacer dividir, cortar, pegar, eliminar, mover, recortar, grabar un fragmento y eliminar una pista. El historial se vacía al crear o abrir un proyecto.
+   - **Deshacer / rehacer:** **Ctrl+Z** deshace y **Ctrl+Y** (o **Ctrl+Shift+Z**) rehace. También están en el menú **Editar**, que muestra qué se va a deshacer. Se puede deshacer todo lo que se hace con fragmentos (dividir, cortar, pegar, eliminar, mover, recortar, grabar) y con pistas (añadir, pegar, cortar, eliminar, mover, cambiar el nombre, importar audio y separar instrumentos). El historial se vacía al crear o abrir un proyecto.
 6. **Pistas:**
    - **Añadir:** al pasar el ratón por una pista aparece un **+** en un círculo, centrado sobre su borde inferior en la esquina derecha de la cabecera. Añade una pista justo debajo. Si no hay pistas, el **+** está arriba del todo.
    - **Mover:** arrastra la cabecera (nombre o zona vacía) arriba o abajo, o usa **Alt+↑ / Alt+↓**.
    - **Cambiar el nombre:** doble clic en el nombre, **F2**, o clic derecho en la cabecera.
    - **Eliminar:** la **×** de cada pista, tras pedir confirmación. **Ctrl+Z** la recupera con sus fragmentos, volumen y efectos.
+   - **Copiar, cortar y pegar pistas:** haz clic en la cabecera de la pista (así no queda ningún fragmento seleccionado) y pulsa **Ctrl+C** o **Ctrl+X**. **Ctrl+V** pega una copia debajo de la pista seleccionada, con sus fragmentos, volumen, paneo y efectos. Si el nombre ya existe, se añade "(copia)". También está en el menú **Editar** y en el clic derecho de la cabecera.
+   - Con un fragmento seleccionado, **Ctrl+C / Ctrl+X** actúan sobre el fragmento. **Ctrl+V** pega siempre lo último que copiaste, sea un fragmento o una pista.
 7. **Zoom y desplazamiento:**
    - **Ctrl + rueda** acerca o aleja alrededor del ratón.
    - **Shift + rueda**, o la rueda horizontal del touchpad, desplaza a los lados. También sirve la barra inferior.
@@ -200,7 +202,7 @@ Atajos de teclado:
 | S | dividir el fragmento en el cabezal |
 | Ctrl+Z | deshacer |
 | Ctrl+Y / Ctrl+Shift+Z | rehacer |
-| Ctrl+X / C / V | cortar / copiar / pegar fragmento |
+| Ctrl+X / C / V | cortar / copiar / pegar el fragmento seleccionado, o la pista entera si no hay fragmento seleccionado |
 | Supr | eliminar el fragmento seleccionado |
 | Ctrl+T | añadir pista (debajo de la seleccionada) |
 | F2 | cambiar el nombre de la pista seleccionada |
@@ -224,7 +226,7 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer, grabar encima de audio, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, grabar encima de audio, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma encima de otra), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
@@ -239,7 +241,7 @@ Cada comprobación imprime `ok:` o `FALLO:`. Al final aparece `RESULTADO: n/m`, 
 
 - **Memoria**: el audio se guarda en memoria como float estéreo, unos 23 MB por minuto y pista a 48 kHz. Para canciones muy largas conviene leer del disco en streaming (`BufferingAudioSource`).
 - **Saturación sin sobremuestreo**: con drive alto aparece aliasing. Añadir `juce::dsp::Oversampling` introduce latencia, así que antes hace falta compensar la latencia entre pistas.
-- **Deshacer/rehacer** cubre los fragmentos y la eliminación de pistas. Los cambios de volumen, paneo, efectos, nombre u orden de las pistas todavía no se deshacen.
+- **Deshacer/rehacer** cubre los fragmentos y las pistas. Los cambios de volumen, paneo, mute, solo y efectos todavía no se deshacen. Al deshacer una separación desaparecen los stems, pero la pista original sigue silenciada.
 - **Pendiente**:
   - Exportar solo un tramo (entre marcadores) o cada pista por separado (stems).
   - `SpectrogramView` con FFT.
