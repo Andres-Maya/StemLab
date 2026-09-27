@@ -1,5 +1,6 @@
 #include "DemucsSeparator.h"
 
+#include "Utils/PythonEnvironment.h"
 #include "Utils/Strings.h"
 
 #include <algorithm>
@@ -29,46 +30,11 @@ namespace
 
 DemucsSeparator::Settings DemucsSeparator::findDefaultSettings()
 {
-    // 1) Distribución: carpeta "python" junto al ejecutable.
-    // 2) Desarrollo: carpeta python/ del repositorio (la define CMake).
-    juce::Array<juce::File> candidates;
-    candidates.add (juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-                        .getParentDirectory().getChildFile ("python"));
-   #ifdef STEMLAB_PYTHON_DIR
-    candidates.add (juce::File (juce::String::fromUTF8 (STEMLAB_PYTHON_DIR)));
-   #endif
-
-    auto pythonFolder = candidates.getLast();
-
-    for (const auto& folder : candidates)
-    {
-        if (folder.getChildFile (scriptName).existsAsFile())
-        {
-            pythonFolder = folder;
-            break;
-        }
-    }
+    const auto environment = PythonEnvironment::find (scriptName);
 
     Settings result;
-    result.scriptFile = pythonFolder.getChildFile (scriptName);
-
-   #if JUCE_WINDOWS
-    const auto venvPython = pythonFolder.getChildFile (".venv/Scripts/python.exe");
-    const juce::String systemPython ("python");
-   #else
-    const auto venvPython = pythonFolder.getChildFile (".venv/bin/python3");
-    const juce::String systemPython ("python3");
-   #endif
-
-    const auto fromEnvironment = juce::SystemStats::getEnvironmentVariable ("STEMLAB_PYTHON", {});
-
-    if (fromEnvironment.isNotEmpty())
-        result.pythonCommand = fromEnvironment;
-    else if (venvPython.existsAsFile())
-        result.pythonCommand = venvPython.getFullPathName();
-    else
-        result.pythonCommand = systemPython;
-
+    result.scriptFile = environment.getScript (scriptName);
+    result.pythonCommand = environment.pythonCommand;
     return result;
 }
 
