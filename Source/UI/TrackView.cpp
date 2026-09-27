@@ -53,14 +53,80 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     waveform.onClipClicked = [this] (juce::uint32 clipId) { if (onClipClicked != nullptr) onClipClicked (*this, clipId); };
     waveform.onContextMenu = [this] (juce::uint32 clipId, double seconds) { if (onContextMenu != nullptr) onContextMenu (*this, clipId, seconds); };
     waveform.onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
+    waveform.onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+    {
+        return onWheel != nullptr && onWheel (x, e, w);
+    };
     addAndMakeVisible (waveform);
 
+    addBelowButton.setTooltip ("Añadir una pista debajo"_u8);
+    addBelowButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    addBelowButton.onClick = [this] { if (onAddBelow != nullptr) onAddBelow (*this); };
+    addBelowButton.colour = colour;
+    addChildComponent (addBelowButton);
+
+    addMouseListener (&hoverWatcher, true);
     track->getMute().addListener (this);
 }
 
 TrackView::~TrackView()
 {
+    removeMouseListener (&hoverWatcher);
     track->getMute().removeListener (this);
+}
+
+void TrackView::setIsLast (bool shouldBeLast)
+{
+    isLast = shouldBeLast;
+    updateAddButton();
+}
+
+void TrackView::updateAddButton()
+{
+    addBelowButton.setVisible (isLast || isMouseOver (true));
+}
+
+//==============================================================================
+juce::Point<float> TrackView::AddBelowButton::getCircleCentre() const
+{
+    // Pegado al borde inferior: el círculo se apoya en la línea del borde.
+    return { 6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius };
+}
+
+bool TrackView::AddBelowButton::hitTest (int x, int y)
+{
+    // Solo el círculo responde al ratón; el resto de la franja sigue siendo
+    // la cabecera de la pista (clic para seleccionar).
+    return getCircleCentre().getDistanceFrom ({ static_cast<float> (x), static_cast<float> (y) }) <= radius + 3.0f;
+}
+
+void TrackView::AddBelowButton::paint (juce::Graphics& g)
+{
+    const auto centre = getCircleCentre();
+    const auto lineY = static_cast<float> (getHeight()) - 2.0f;
+
+    // Del color de la pista, algo apagado; al pasar el ratón, a pleno color.
+    const auto lineColour = colour.withAlpha (hovered ? 1.0f : 0.65f);
+
+    // Línea sobre el borde inferior, solo en la cabecera (hasta donde empiezan
+    // los clips), saliendo del propio círculo.
+    g.setColour (lineColour);
+    g.fillRect (centre.x, lineY, static_cast<float> (getWidth()) - centre.x, 2.0f);
+
+    g.setColour (Palette::panel.interpolatedWith (colour, hovered ? 0.35f : 0.15f));
+    g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
+    g.setColour (lineColour);
+    g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.5f);
+
+    g.setColour (hovered ? Palette::text : Palette::text.withAlpha (0.8f));
+    g.fillRoundedRectangle (centre.x - 4.0f, centre.y - 0.75f, 8.0f, 1.5f, 0.75f);
+    g.fillRoundedRectangle (centre.x - 0.75f, centre.y - 4.0f, 1.5f, 8.0f, 0.75f);
+}
+
+void TrackView::AddBelowButton::mouseUp (const juce::MouseEvent& event)
+{
+    if (hitTest (event.x, event.y) && onClick != nullptr)
+        onClick();
 }
 
 void TrackView::setSelected (bool shouldBeSelected)
@@ -70,11 +136,6 @@ void TrackView::setSelected (bool shouldBeSelected)
         selected = shouldBeSelected;
         repaint();
     }
-}
-
-void TrackView::setTimelineLength (double seconds)
-{
-    waveform.setTimelineLength (seconds);
 }
 
 void TrackView::trackChanged()
@@ -108,6 +169,7 @@ void TrackView::resized()
 {
     auto header = getLocalBounds().removeFromLeft (headerWidth).reduced (10, 6).withTrimmedLeft (4);
     waveform.setBounds (getLocalBounds().withTrimmedLeft (headerWidth).withTrimmedBottom (1));
+    addBelowButton.setBounds (0, getHeight() - AddBelowButton::height, headerWidth - 1, AddBelowButton::height);
 
     meter.setBounds (header.removeFromRight (8));
     header.removeFromRight (6);
