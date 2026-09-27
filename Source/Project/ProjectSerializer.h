@@ -6,13 +6,21 @@
 
 namespace stemlab
 {
+/** Un clip tal como se guarda: todo en segundos, independiente del sample rate. */
+struct ClipDescription
+{
+    juce::File file;                // ruta absoluta en memoria, relativa en disco
+    double startSeconds = 0.0;      // posición en la línea de tiempo (puede ser < 0: se recorta)
+    double offsetSeconds = 0.0;     // desde dónde del archivo empieza
+    double lengthSeconds = -1.0;    // < 0: hasta el final del archivo
+};
+
 /** Descripción de una pista tal como se guarda en project.json. */
 struct TrackDescription
 {
     juce::String name;
-    juce::File file;                // ruta absoluta en memoria, relativa en disco
-    double startSeconds = 0.0;      // en segundos: independiente del sample rate
-    juce::var state;                // volumen, paneo, mute, solo, efectos
+    juce::var state;                        // volumen, paneo, mute, solo, efectos
+    std::vector<ClipDescription> clips;     // puede estar vacía (pista sin audio)
 };
 
 /** Contenido de un proyecto que no está en Project (pistas y master). */
@@ -25,10 +33,13 @@ struct ProjectDocument
 /**
     Lectura y escritura de project.json. No depende del motor de audio: recibe
     y devuelve descripciones, así es fácil de probar y de versionar.
+
+    Versión 1: una pista = un archivo + inicio.
+    Versión 2: una pista = lista de clips (se siguen leyendo los de la v1).
 */
 struct ProjectSerializer
 {
-    static constexpr int currentVersion = 1;
+    static constexpr int currentVersion = 2;
 
     static juce::Result write (const Project& project, const ProjectDocument& document);
     static juce::Result read (const juce::File& projectFile, Project& project, ProjectDocument& document);
