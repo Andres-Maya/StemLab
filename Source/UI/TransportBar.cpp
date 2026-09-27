@@ -10,7 +10,7 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
       toStartButton ("Ir al inicio", IconButton::Icon::toStart),
       playButton ("Reproducir / Pausa (Espacio)", IconButton::Icon::play),
       stopButton ("Detener", IconButton::Icon::stop),
-      recordButton ("Grabar (R)", IconButton::Icon::record),
+      recordButton ("Grabar en la pista seleccionada (R)", IconButton::Icon::record),
       masterMeter ([this] (int channel) { return engine.getMixer().getAndResetMasterPeak (channel); }),
       masterAttachment (engine.getMixer().getMasterVolume(), masterSlider)
 {

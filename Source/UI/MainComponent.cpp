@@ -31,7 +31,6 @@ namespace
         pasteClipId,
         deleteClipId,
         addTrackId,
-        armTrackId,
         modelBaseId = 1000
     };
 
@@ -76,7 +75,6 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
 
     trackList.onSelectionChanged = [this] (std::shared_ptr<AudioTrack> track) { mixer.setTrack (std::move (track)); };
     trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
-    trackList.onArmRequested = [this] (std::shared_ptr<AudioTrack> track) { toggleArm (std::move (track)); };
     trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
     trackList.onAddTrack = [this] { addTrack(); };
     trackList.onRemoveTrack = [this] { deleteSelectedTrack(); };
@@ -202,7 +200,6 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
             addItem (menu, deleteClipId, "Eliminar fragmento", "Supr", hasClip);
             menu.addSectionHeader ("Pistas");
             addItem (menu, addTrackId, "Añadir pista"_u8, "Ctrl+T");
-            addItem (menu, armTrackId, "Grabar en la pista seleccionada", {}, hasTrack);
             addItem (menu, deleteTrackId, "Eliminar pista seleccionada", "Ctrl+Supr", hasTrack);
             break;
         }
@@ -285,7 +282,6 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case pasteClipId:           pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); break;
         case deleteClipId:          deleteSelectedClip(); break;
         case addTrackId:            addTrack(); break;
-        case armTrackId:            toggleArm (trackList.getSelectedTrack()); break;
         default:                    break;
     }
 }
@@ -454,21 +450,7 @@ void MainComponent::addTrack()
     const auto track = projects.addEmptyTrack ("Pista");
     trackList.refresh();
     trackList.selectTrack (track);
-    statusBar.setMessage ("Pista añadida. Pulsa su botón rojo para grabar en ella."_u8);
-}
-
-void MainComponent::toggleArm (std::shared_ptr<AudioTrack> track)
-{
-    if (track == nullptr)
-        return;
-
-    if (engine.isRecording())
-    {
-        statusBar.setMessage ("Detén la grabación antes de cambiar de pista."_u8);
-        return;
-    }
-
-    projects.setArmedTrack (track->isArmed() ? nullptr : track);
+    statusBar.setMessage ("Pista añadida y seleccionada: pulsa R o el botón rojo para grabar en ella."_u8);
 }
 
 //==============================================================================
@@ -617,9 +599,6 @@ void MainComponent::showClipMenu (std::shared_ptr<AudioTrack> track, juce::uint3
     addItem (menu, copyClipId, "Copiar", "Ctrl+C", hasClip);
     addItem (menu, pasteClipId, "Pegar aquí"_u8, {}, clipboard.has_value());
     addItem (menu, deleteClipId, "Eliminar fragmento", "Supr", hasClip);
-    menu.addSeparator();
-    addItem (menu, armTrackId, track != nullptr && track->isArmed() ? juce::String ("No grabar en esta pista")
-                                                                    : juce::String ("Grabar en esta pista"));
 
     menu.showMenuAsync (juce::PopupMenu::Options(),
                         [safe = juce::Component::SafePointer<MainComponent> (this), track, position] (int result)
@@ -681,15 +660,15 @@ void MainComponent::toggleRecording()
         return;
     }
 
-    // Se graba en la pista armada. Si no hay ninguna, se crea una pista nueva
-    // (nunca se graba por sorpresa encima de una canción importada).
-    auto target = projects.getArmedTrack();
+    // Se graba en la pista seleccionada. Si no hay ninguna, se crea una nueva
+    // y queda seleccionada, así el siguiente R sigue grabando en ella.
+    auto target = trackList.getSelectedTrack();
 
     if (target == nullptr)
     {
         target = projects.addEmptyTrack ("Grabación"_u8);
-        projects.setArmedTrack (target);
         trackList.refresh();
+        trackList.selectTrack (target);
     }
 
     const auto result = engine.startRecording (projects.createRecordingFile());
@@ -700,8 +679,10 @@ void MainComponent::toggleRecording()
         return;
     }
 
+    // "Armada" solo mientras se graba: pinta la franja roja y la vista previa
+    // en directo sobre esa pista.
     recordingTarget = target;
-    trackList.selectTrack (target);
+    projects.setArmedTrack (target);
     statusBar.setMessage ("Grabando en \"" + target->getName() + "\"... pulsa R para pausar y R para seguir en la misma pista.");
 }
 
@@ -709,9 +690,10 @@ void MainComponent::finishRecording()
 {
     const auto recording = engine.stopRecording();
     engine.getTransport().pause();
+    projects.setArmedTrack (nullptr);
 
-    // La grabación se añade como un fragmento más de la misma pista; al volver
-    // a pulsar R se sigue grabando en ella, justo después.
+    // La grabación se añade como un fragmento más de la misma pista (que sigue
+    // seleccionada); al volver a pulsar R se sigue grabando en ella, justo después.
     statusBar.setMessage ("Procesando la grabación..."_u8);
     projects.addRecording (recording, recordingTarget,
                            resultHandler ("Fragmento grabado. Pulsa R para seguir grabando en la misma pista."_u8));

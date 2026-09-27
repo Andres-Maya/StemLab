@@ -148,7 +148,6 @@ void TrackListView::refresh()
         row->onSelect = [this] (TrackView& view) { selectTrack (view.getTrackPointer()); };
         row->onSeek = [this] (double seconds) { seekTo (seconds); };
         row->onDelete = [this] (TrackView& view) { if (onDeleteRequested != nullptr) onDeleteRequested (view.getTrack()); };
-        row->onArm = [this] (TrackView& view) { if (onArmRequested != nullptr) onArmRequested (view.getTrackPointer()); };
         row->onClipClicked = [this] (TrackView& view, juce::uint32 clipId) { selectClip (view.getTrackPointer(), clipId); };
         row->onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
         row->onContextMenu = [this] (TrackView& view, juce::uint32 clipId, double seconds)

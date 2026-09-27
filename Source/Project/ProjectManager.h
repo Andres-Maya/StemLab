@@ -55,7 +55,8 @@ public:
     std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName);
     void removeTrack (const AudioTrack& track);
 
-    /** Pista elegida para grabar. Solo una puede estar armada. */
+    /** Pista en la que se está grabando (solo una; resalta su franja y la vista
+        previa en directo). */
     std::shared_ptr<AudioTrack> getArmedTrack() const;
     void setArmedTrack (const std::shared_ptr<AudioTrack>& track);
 

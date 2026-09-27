@@ -33,7 +33,7 @@ public:
     const juce::String& getName() const noexcept            { return name; }
     void setName (juce::String newName)                     { name = std::move (newName); }
 
-    /** Pista elegida para grabar (solo una a la vez; lo gestiona ProjectManager). */
+    /** Pista en la que se está grabando (solo una a la vez; lo gestiona ProjectManager). */
     bool isArmed() const noexcept                           { return armed; }
     void setArmed (bool shouldBeArmed) noexcept             { armed = shouldBeArmed; }
 

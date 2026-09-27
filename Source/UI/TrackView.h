@@ -14,7 +14,9 @@
 namespace stemlab
 {
 /**
-    Fila de una pista:  [nombre · ● · M · S · × · volumen · paneo · medidor] [clips]
+    Fila de una pista:  [nombre · M · S · × · volumen · paneo · medidor] [clips]
+
+    Mientras se graba en la pista, su franja de color se pone roja.
 */
 class TrackView final : public juce::Component,
                         private Parameter::Listener
@@ -39,7 +41,6 @@ public:
 
     std::function<void (TrackView&)> onSelect;
     std::function<void (TrackView&)> onDelete;
-    std::function<void (TrackView&)> onArm;
     std::function<void (double seconds)> onSeek;
     std::function<void (TrackView&, juce::uint32 clipId)> onClipClicked;
     std::function<void (TrackView&, juce::uint32 clipId, double seconds)> onContextMenu;
@@ -57,7 +58,6 @@ private:
     bool selected = false;
 
     juce::Label nameLabel;
-    IconButton armButton;
     juce::TextButton muteButton { "M" };
     juce::TextButton soloButton { "S" };
     IconButton deleteButton;

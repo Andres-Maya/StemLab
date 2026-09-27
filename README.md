@@ -151,7 +151,8 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - `htdemucs_ft`: 4 pistas, más calidad y más lento.
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
 3. Cada pista tiene Mute, Solo, volumen y paneo. Al seleccionarla, el mezclador muestra su canal y su cadena de efectos.
-4. **Grabar:** pulsa el botón ● de una pista para armarla y luego ⏺ o **R**. Si no hay ninguna armada, se crea una pista nueva.
+4. **Grabar:** selecciona una pista (clic en ella) y pulsa el botón rojo ⏺ del transporte o **R**. Si no hay ninguna pista seleccionada, se crea una nueva. Mientras graba, la franja de la pista se pone roja.
+   - Para grabar aparte de la canción, primero crea una pista con **+ Pista**, que queda seleccionada. Grabar sobre una pista con audio lo tapa en esa zona.
    - Pausar (**R** o Espacio) y volver a pulsar **R** sigue grabando **en la misma pista**, como un fragmento nuevo justo después del anterior.
    - La entrada se elige en **Audio → Configuración de audio**, y la grabación se compensa por la latencia del dispositivo.
    - En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
@@ -168,7 +169,7 @@ Atajos de teclado:
 |---|---|
 | Espacio | reproducir / pausa |
 | Inicio | ir al principio |
-| R | grabar / pausar la grabación (en la pista armada) |
+| R | grabar / pausar la grabación (en la pista seleccionada) |
 | S | dividir el fragmento en el cabezal |
 | Ctrl+X / C / V | cortar / copiar / pegar fragmento |
 | Supr | eliminar el fragmento seleccionado |
