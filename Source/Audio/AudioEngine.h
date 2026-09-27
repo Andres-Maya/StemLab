@@ -8,6 +8,7 @@
 #include "Transport.h"
 
 #include <functional>
+#include <optional>
 
 namespace stemlab
 {
@@ -73,8 +74,9 @@ public:
     bool isRecording() const noexcept                       { return recorder.isRecording(); }
 
     /** Posición en la línea de tiempo donde quedará la grabación en curso (ya
-        compensada por latencia), o -1 si todavía no ha llegado audio. */
-    juce::int64 getRecordingClipStart() const noexcept;
+        compensada por latencia), o nada si todavía no ha llegado audio.
+        Puede ser negativa al grabar desde el principio: ese trozo se recorta. */
+    std::optional<juce::int64> getRecordingClipStart() const noexcept;
 
     /** Picos nuevos de la grabación en curso, uno por cada
         AudioRecorder::previewBinSize muestras (hilo de mensajes). */

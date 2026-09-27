@@ -42,13 +42,15 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     g.setColour (Palette::background);
     g.fillRect (bounds);
 
-    if (startSample < 0 || peaks.empty() || bounds.getWidth() <= 0)
+    if (! startSample.has_value() || peaks.empty() || bounds.getWidth() <= 0)
         return;
 
     // Cada pico cubre previewBinSize muestras; se agrupan por columna de píxeles.
+    // Si el clip empieza antes del 0, lo que queda a la izquierda no se dibuja
+    // (igual que la pista final, que recorta ese trozo).
     const auto pixelsPerSample = bounds.getWidth() / (timelineLength * sampleRate);
     const auto binSize = static_cast<double> (AudioRecorder::previewBinSize);
-    const auto startX = bounds.getX() + static_cast<double> (startSample) * pixelsPerSample;
+    const auto startX = bounds.getX() + static_cast<double> (*startSample) * pixelsPerSample;
     const auto endX = startX + static_cast<double> (peaks.size()) * binSize * pixelsPerSample;
 
     const auto area = bounds.reduced (0, 5).toFloat();
@@ -65,7 +67,10 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     {
         if (column >= bounds.getX() && column < bounds.getRight() && columnPeak > 0.0f)
         {
-            const auto h = juce::jmax (1.0f, juce::jmin (1.0f, columnPeak) * halfHeight);
+            // Escala en dB (-60..0), como un medidor de grabación: los micrófonos
+            // integrados captan bajo y en escala lineal apenas se verían.
+            const auto db = juce::Decibels::gainToDecibels (columnPeak, -60.0f);
+            const auto h = juce::jmax (1.0f, juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f) * halfHeight);
             g.fillRect ((float) column, centreY - h, 1.0f, h * 2.0f);
         }
     };
@@ -243,7 +248,7 @@ void TrackListView::updateRecordingLane()
     if (recording != recordingLane.isVisible())
     {
         recordingLane.peaks.clear();
-        recordingLane.startSample = -1;
+        recordingLane.startSample.reset();
         recordingLane.setVisible (recording);
         content.isEmpty = rows.empty() && ! recording;
         layoutRows();

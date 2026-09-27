@@ -56,7 +56,7 @@ private:
         void paint (juce::Graphics&) override;
 
         std::vector<float> peaks;           // un pico por bin de AudioRecorder::previewBinSize
-        juce::int64 startSample = -1;       // posición final del clip (con latencia compensada)
+        std::optional<juce::int64> startSample;   // posición final del clip (puede ser negativa)
         double sampleRate = 48000.0;
         double timelineLength = 60.0;
     };
