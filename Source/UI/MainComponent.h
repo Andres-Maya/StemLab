@@ -60,7 +60,8 @@ private:
     void importAudio();
     void deleteSelectedTrack();
     void removeTrack (AudioTrack& track);
-    void addTrack();
+    /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
+    void addTrack (int insertIndex = -1);
 
     // Edición de fragmentos (clips)
     void splitAtPlayhead();

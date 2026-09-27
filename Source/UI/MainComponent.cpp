@@ -31,6 +31,9 @@ namespace
         pasteClipId,
         deleteClipId,
         addTrackId,
+        zoomInId,
+        zoomOutId,
+        zoomFitId,
         modelBaseId = 1000
     };
 
@@ -76,7 +79,7 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     trackList.onSelectionChanged = [this] (std::shared_ptr<AudioTrack> track) { mixer.setTrack (std::move (track)); };
     trackList.onDeleteRequested = [this] (AudioTrack& track) { removeTrack (track); };
     trackList.onClipsEdited = [this] { projects.notifyTracksEdited(); };
-    trackList.onAddTrack = [this] { addTrack(); };
+    trackList.onAddTrack = [this] (int insertIndex) { addTrack (insertIndex); };
     trackList.onContextMenu = [this] (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds)
     {
         showClipMenu (std::move (track), clipId, seconds);
@@ -204,6 +207,11 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
         }
 
         case 2:
+            menu.addSectionHeader ("Vista");
+            addItem (menu, zoomInId, "Acercar", "Ctrl + rueda");
+            addItem (menu, zoomOutId, "Alejar", "Ctrl + rueda");
+            addItem (menu, zoomFitId, "Ver toda la canción"_u8);
+            menu.addSeparator();
             addItem (menu, showFolderId, "Mostrar carpeta del proyecto");
             break;
 
@@ -281,6 +289,9 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case pasteClipId:           pasteClip (trackList.getSelectedTrack(), engine.getTransport().getPosition()); break;
         case deleteClipId:          deleteSelectedClip(); break;
         case addTrackId:            addTrack(); break;
+        case zoomInId:              trackList.zoomIn(); break;
+        case zoomOutId:             trackList.zoomOut(); break;
+        case zoomFitId:             trackList.zoomToFit(); break;
         default:                    break;
     }
 }
@@ -467,9 +478,20 @@ void MainComponent::removeTrack (AudioTrack& track)
                                         }));
 }
 
-void MainComponent::addTrack()
+void MainComponent::addTrack (int insertIndex)
 {
-    const auto track = projects.addEmptyTrack ("Pista");
+    // Sin posición (Ctrl+T, menú): justo debajo de la pista seleccionada.
+    if (insertIndex < 0)
+    {
+        const auto& tracks = engine.getMixer().getTracks();
+        const auto selectedTrack = trackList.getSelectedTrack();
+
+        for (size_t i = 0; i < tracks.size(); ++i)
+            if (tracks[i] == selectedTrack)
+                insertIndex = static_cast<int> (i) + 1;
+    }
+
+    const auto track = projects.addEmptyTrack ("Pista", insertIndex);
     trackList.refresh();
     trackList.selectTrack (track);
     statusBar.setMessage ("Pista añadida y seleccionada: pulsa R o el botón rojo para grabar en ella."_u8);
