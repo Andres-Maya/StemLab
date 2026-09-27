@@ -5,11 +5,12 @@
 
 namespace stemlab
 {
-MainWindow::MainWindow (const juce::String& name, AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai)
+MainWindow::MainWindow (const juce::String& name, AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai,
+                        juce::PropertiesFile* settings)
     : juce::DocumentWindow (name, Palette::background, juce::DocumentWindow::allButtons)
 {
     setUsingNativeTitleBar (true);
-    setContentOwned (new MainComponent (engine, projects, ai), true);
+    setContentOwned (new MainComponent (engine, projects, ai, settings), true);
     setResizable (true, true);
     setResizeLimits (800, 520, 10000, 10000);
 
@@ -38,6 +39,12 @@ MainWindow::MainWindow (const juce::String& name, AudioEngine& engine, ProjectMa
 void MainWindow::closeButtonPressed()
 {
     requestQuit();
+}
+
+void MainWindow::openProjectFile (const juce::File& file)
+{
+    if (auto* content = dynamic_cast<MainComponent*> (getContentComponent()))
+        content->openProjectFile (file);
 }
 
 void MainWindow::requestQuit()
