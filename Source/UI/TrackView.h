@@ -16,6 +16,9 @@ namespace stemlab
 /**
     Fila de una pista:  [nombre · M · S · × · volumen · paneo · medidor] [clips]
 
+    - Arrastrar la cabecera (nombre o zona vacía) arriba/abajo: mueve la pista.
+    - Doble clic en el nombre (o F2): cambiar el nombre.
+    - Clic derecho en la cabecera: menú de la pista.
     Mientras se graba en la pista, su franja de color se pone roja.
 */
 class TrackView final : public juce::Component,
@@ -31,67 +34,48 @@ public:
 
     AudioTrack& getTrack() noexcept                                 { return *track; }
     const std::shared_ptr<AudioTrack>& getTrackPointer() const noexcept { return track; }
+    juce::Colour getColour() const noexcept                         { return colour; }
 
     void setSelected (bool shouldBeSelected);
     void setSelectedClip (juce::uint32 clipId)                      { waveform.setSelectedClip (clipId); }
     void setVisibleRange (double startSeconds, double lengthSeconds) { waveform.setVisibleRange (startSeconds, lengthSeconds); }
 
-    /** La última pista muestra siempre su "+"; las demás solo con el ratón encima. */
-    void setIsLast (bool shouldBeLast);
-
-    /** Volver a leer clips y estado de grabación de la pista. */
+    /** Volver a leer clips, nombre y estado de grabación de la pista. */
     void trackChanged();
+
+    /** Abre el editor del nombre (como un doble clic). */
+    void startRename();
 
     std::function<void (TrackView&)> onSelect;
     std::function<void (TrackView&)> onDelete;
+    std::function<void (TrackView&)> onRenamed;
+    std::function<void (TrackView&)> onHeaderMenu;
     std::function<void (double seconds)> onSeek;
     std::function<void (TrackView&, juce::uint32 clipId)> onClipClicked;
     std::function<void (TrackView&, juce::uint32 clipId, double seconds)> onContextMenu;
     std::function<void()> onClipsEdited;
-    std::function<void (TrackView&)> onAddBelow;
     std::function<bool (int x, const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
+
+    /** Arrastre de la cabecera para reordenar: posición vertical del ratón en el
+        contenedor de las pistas y punto donde se agarró la fila. */
+    std::function<void (TrackView&, int parentY, int grabY)> onReorderDrag;
+    std::function<void (TrackView&)> onReorderEnd;
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
 
 private:
-    /** "+" en un círculo pegado al borde inferior de la cabecera, con una línea
-        que llega hasta donde empiezan los clips: añade una pista debajo. */
-    struct AddBelowButton final : public juce::Component,
-                                  public juce::SettableTooltipClient
-    {
-        static constexpr int height = 18;
-        static constexpr float radius = 8.0f;
-
-        juce::Point<float> getCircleCentre() const;
-        bool hitTest (int x, int y) override;
-        void paint (juce::Graphics&) override;
-        void mouseEnter (const juce::MouseEvent&) override   { hovered = true; repaint(); }
-        void mouseExit (const juce::MouseEvent&) override    { hovered = false; repaint(); }
-        void mouseUp (const juce::MouseEvent&) override;
-
-        std::function<void()> onClick;
-        juce::Colour colour;        // color de la pista
-        bool hovered = false;
-    };
-
-    /** Detecta si el ratón está sobre la fila (o sobre cualquiera de sus hijos). */
-    struct HoverWatcher final : public juce::MouseListener
-    {
-        explicit HoverWatcher (TrackView& v) : view (v) {}
-        void mouseEnter (const juce::MouseEvent&) override   { view.updateAddButton(); }
-        void mouseExit (const juce::MouseEvent&) override    { view.updateAddButton(); }
-        TrackView& view;
-    };
-
     void parameterChanged (Parameter&) override;
-    void updateAddButton();
 
     std::shared_ptr<AudioTrack> track;
     juce::Colour colour;
     bool selected = false;
-    bool isLast = false;
+
+    int grabY = 0;
+    bool reordering = false;
 
     juce::Label nameLabel;
     juce::TextButton muteButton { "M" };
@@ -101,8 +85,6 @@ private:
     juce::Slider panSlider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     LevelMeter meter;
     WaveformView waveform;
-    AddBelowButton addBelowButton;
-    HoverWatcher hoverWatcher { *this };
 
     SliderAttachment volumeAttachment;
     SliderAttachment panAttachment;
