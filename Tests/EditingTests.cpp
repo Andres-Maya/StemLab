@@ -140,6 +140,40 @@ namespace
 
         auto inside = makeClip (source, 20, 0, 50);           // dentro de audio ya grabado
         CHECK (! ClipEditing::fitIntoFreeSpace (clips, inside), "una toma que cae entera sobre audio no se añade");
+
+        section ("Mover un fragmento delante de otro (y abrir espacio)");
+
+        // A [0,200)  B [200,400)  C [400,600)  D [1000,1200)
+        const std::vector<AudioClip> row { makeClip (source, 0, 0, 200), makeClip (source, 200, 0, 200),
+                                           makeClip (source, 400, 0, 200), makeClip (source, 1000, 0, 200) };
+        const auto a = row[0].id, b = row[1].id, c = row[2].id, d = row[3].id;
+        const auto startOf = [] (std::vector<AudioClip> list, juce::uint32 id) { return ClipEditing::find (list, id)->timelineStart; };
+
+        auto moved = ClipEditing::moveWithoutOverlap (row, a, 150);     // centro 250 < centro de B (300)
+        CHECK (startOf (moved, a) == 0 && startOf (moved, b) == 200, "sin pasar del centro del vecino: se queda contra él");
+
+        moved = ClipEditing::moveWithoutOverlap (row, a, 250);          // centro 350 > 300: salta delante de B
+        CHECK (startOf (moved, b) == 200 && startOf (moved, a) == 400 && startOf (moved, c) == 600 && startOf (moved, d) == 1200,
+               "pasado el centro de B, A va delante de B y C y D se apartan 200 a la vez");
+
+        moved = ClipEditing::moveWithoutOverlap (row, c, 50);           // C hacia atrás, centro 150 > centro de A (100)
+        CHECK (startOf (moved, a) == 0 && startOf (moved, c) == 200 && startOf (moved, b) == 400 && startOf (moved, d) == 1200,
+               "hacia atrás: C se mete entre A y B, y B y D se apartan");
+
+        moved = ClipEditing::moveWithoutOverlap (row, c, 0);            // centro 100: no pasa del centro de A
+        CHECK (startOf (moved, c) == 0 && startOf (moved, a) == 200 && startOf (moved, b) == 400,
+               "arrastrado del todo al principio, C va primero y los demás se apartan");
+
+        // Con sitio de sobra: A [0,200)  B [200,400)  E [1000,1200)
+        const std::vector<AudioClip> roomy { row[0], row[1], makeClip (source, 1000, 0, 200) };
+        const auto e = roomy[2].id;
+        moved = ClipEditing::moveWithoutOverlap (roomy, a, 500);
+        CHECK (startOf (moved, a) == 500 && startOf (moved, b) == 200 && startOf (moved, e) == 1000,
+               "si cabe en el hueco de delante, salta ahí sin mover a nadie");
+        moved = ClipEditing::moveWithoutOverlap (roomy, a, 900);        // centro 1000 < centro de E (1100)
+        CHECK (startOf (moved, a) == 800 && startOf (moved, e) == 1000, "se detiene contra el siguiente (E)");
+        moved = ClipEditing::moveWithoutOverlap (roomy, a, 1050);       // centro 1150 > 1100
+        CHECK (startOf (moved, a) == 1200 && startOf (moved, e) == 1000, "pasado el centro de E, va detrás de él");
     }
 
     void testRecordAfterExistingAudio()
@@ -262,7 +296,7 @@ namespace
         waveform.mouseDown (mouseEventAt (waveform, empty, empty, false));
         waveform.mouseUp (mouseEventAt (waveform, empty, empty, false));
         CHECK (clicked == 0 && near (seekedTo, 0.5, 0.011), "clic en zona vacía: deselecciona y coloca el cabezal");
-        section ("Mover y recortar fragmentos sin pasar por encima de sus vecinos");
+        section ("Arrastrar fragmentos: contra el vecino, por delante de él y abriendo espacio");
 
         AudioTrack pair ("Dos");
         const auto a = makeClip (makeSource (48000 * 5, 0.3f), 0, 0, 48000 * 2);   // [0, 2) s de un audio de 5 s
@@ -272,25 +306,44 @@ namespace
         lane.setBounds (0, 0, 1000, 80);
         lane.setVisibleRange (0.0, 10.0);
 
-        // Arrastrar B 4 s a la izquierda: se detiene al tocar A (2 s).
-        const juce::Point<float> bCentre (500.0f, 40.0f), farLeft (100.0f, 40.0f);
-        lane.mouseDown (mouseEventAt (lane, bCentre, bCentre, false));
-        lane.mouseDrag (mouseEventAt (lane, farLeft, bCentre, true));
-        lane.mouseUp (mouseEventAt (lane, farLeft, bCentre, true));
-        auto moved = pair.getClips();
-        CHECK (ClipEditing::find (moved, b.id)->timelineStart == 48000 * 2, "mover: se detiene al final del fragmento anterior");
+        const auto startOf = [&pair] (juce::uint32 id) { auto list = pair.getClips(); return ClipEditing::find (list, id)->timelineStart; };
+        const auto drag = [&lane] (juce::Point<float> from, std::initializer_list<juce::Point<float>> path)
+        {
+            lane.mouseDown (mouseEventAt (lane, from, from, false));
+            for (const auto& to : path)
+                lane.mouseDrag (mouseEventAt (lane, to, from, true));
+            lane.mouseUp (mouseEventAt (lane, *(path.end() - 1), from, true));
+        };
 
-        // Alargar A por la derecha: B está justo detrás, no se puede.
-        auto shorter = pair.getClips();
-        ClipEditing::trimEnd (*ClipEditing::find (shorter, a.id), 48000);    // A: [0, 1) s
-        pair.setClips (shorter);
+        // Arrastrar B 2,5 s a la izquierda (su centro no pasa del de A): se detiene al tocar A.
+        const juce::Point<float> bCentre (500.0f, 40.0f);
+        drag (bCentre, { { 250.0f, 40.0f } });
+        CHECK (startOf (b.id) == 48000 * 2 && startOf (a.id) == 0, "mover: se detiene al final del fragmento anterior");
+
+        // Seguir arrastrando B (ahora en [2, 4) s) más a la izquierda: pasa por delante de A,
+        // que se aparta. Ida y vuelta en el mismo gesto: A vuelve a su sitio.
+        const juce::Point<float> bNow (300.0f, 40.0f);
+        drag (bNow, { { 80.0f, 40.0f }, { 290.0f, 40.0f } });
+        CHECK (startOf (b.id) == 48000 * 2 && startOf (a.id) == 0, "si se vuelve atrás durante el arrastre, A regresa a su sitio");
+
+        drag (bNow, { { 80.0f, 40.0f } });
+        CHECK (startOf (b.id) == 0 && startOf (a.id) == 48000 * 2, "arrastrado lo suficiente, B pasa delante de A y A se aparta");
+
+        // Recortar: A [2, 3) s de un audio de 5 s y B en [0, 2) s; C detrás en [4, 6) s.
+        auto layout = pair.getClips();
+        ClipEditing::trimEnd (*ClipEditing::find (layout, a.id), 48000 * 3);
+        auto c = makeClip (makeSource (48000 * 2, 0.3f), 48000 * 4);
+        layout.push_back (c);
+        pair.setClips (layout);
         lane.clipsChanged();
-        const juce::Point<float> aEnd (98.0f, 40.0f), farRight (400.0f, 40.0f);
+
+        // Alargar A por la derecha: se detiene al llegar a C (4 s), aunque su audio da para más.
+        const juce::Point<float> aEnd (298.0f, 40.0f), farRight (700.0f, 40.0f);
         lane.mouseDown (mouseEventAt (lane, aEnd, aEnd, false));
         lane.mouseDrag (mouseEventAt (lane, farRight, aEnd, true));
         lane.mouseUp (mouseEventAt (lane, farRight, aEnd, true));
         auto trimmed = pair.getClips();
-        CHECK (ClipEditing::find (trimmed, a.id)->getEnd() == 48000 * 2, "recortar: el borde se detiene al principio del siguiente");
+        CHECK (ClipEditing::find (trimmed, a.id)->getEnd() == 48000 * 4, "recortar: el borde se detiene al principio del siguiente");
     }
 }
 
