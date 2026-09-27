@@ -1,5 +1,6 @@
 #pragma once
 
+#include <juce_data_structures/juce_data_structures.h>
 #include <juce_events/juce_events.h>
 
 #include "Audio/AudioEngine.h"
@@ -59,6 +60,8 @@ public:
     /** Crea una pista vacía (por ejemplo, para grabar en ella) en la posición
         indicada, o al final si insertIndex < 0. */
     std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName, int insertIndex = -1);
+
+    /** Quita la pista del proyecto (se puede deshacer con Ctrl+Z). */
     void removeTrack (const AudioTrack& track);
 
     /** Pista en la que se está grabando (solo una; resalta su franja y la vista
@@ -72,6 +75,26 @@ public:
 
     /** Avisar tras editar clips (actualiza la duración y la interfaz). */
     void notifyTracksEdited();
+
+    //==========================================================================
+    // Edición de fragmentos con deshacer / rehacer (Ctrl+Z / Ctrl+Y)
+
+    /** Sustituye los clips de la pista y anota el cambio en el historial. */
+    void editClips (const std::shared_ptr<AudioTrack>& track, std::vector<AudioClip> newClips,
+                    const juce::String& actionName);
+
+    /** Anota una edición que ya se aplicó a la pista (arrastrar con el ratón
+        aplica cada movimiento al momento para oírlo): clipsBefore es la lista
+        de antes de empezar. */
+    void clipsEdited (const std::shared_ptr<AudioTrack>& track, std::vector<AudioClip> clipsBefore,
+                      const juce::String& actionName);
+
+    bool canUndo() const                            { return undoManager.canUndo(); }
+    bool canRedo() const                            { return undoManager.canRedo(); }
+    juce::String getUndoDescription() const         { return undoManager.getUndoDescription(); }
+    juce::String getRedoDescription() const         { return undoManager.getRedoDescription(); }
+    bool undo();
+    bool redo();
 
     juce::String createTrackName (const juce::String& baseName) const;
     juce::File createRecordingFile() const;
@@ -107,6 +130,9 @@ private:
     std::vector<TrackRequest> requestsFrom (const ProjectDocument& document) const;
     ProjectDocument describe() const;
 
+    /** Añade al historial una acción ya creada, como una transacción propia. */
+    void performUndoable (std::unique_ptr<juce::UndoableAction> action, const juce::String& actionName);
+
     /** Toma la "foto" del estado actual como referencia de "sin cambios". */
     void markSaved();
     juce::String savedSnapshot;
@@ -120,6 +146,10 @@ private:
     int pendingLoads = 0;
 
     juce::ThreadPool loaderPool;
+
+    // Historial de ediciones. Guarda las listas de clips (no el audio, que se
+    // comparte), así que cada paso ocupa poco. Se vacía al cambiar de proyecto.
+    juce::UndoManager undoManager { 1000, 50 };
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (ProjectManager)
     JUCE_DECLARE_NON_COPYABLE (ProjectManager)

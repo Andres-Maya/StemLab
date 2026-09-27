@@ -70,13 +70,6 @@ void AudioTrack::setClips (std::vector<AudioClip> newClips)
     endSample.store (end);
 }
 
-void AudioTrack::addClip (AudioClip clip)
-{
-    auto updated = getClips();
-    updated.push_back (std::move (clip));
-    setClips (std::move (updated));
-}
-
 bool AudioTrack::hasClips() const
 {
     const juce::ScopedLock lock (clipLock);

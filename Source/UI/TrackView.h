@@ -53,7 +53,7 @@ public:
     std::function<void (double seconds)> onSeek;
     std::function<void (TrackView&, juce::uint32 clipId)> onClipClicked;
     std::function<void (TrackView&, juce::uint32 clipId, double seconds)> onContextMenu;
-    std::function<void()> onClipsEdited;
+    std::function<void (TrackView&, std::vector<AudioClip> clipsBefore, const juce::String& actionName)> onClipsEdited;
     std::function<bool (int x, const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
 
     /** Arrastre de la cabecera para reordenar: posición vertical del ratón en el

@@ -56,7 +56,8 @@ public:
     std::function<void (std::shared_ptr<AudioTrack>)> onSelectionChanged;
     std::function<void (AudioTrack&)> onDeleteRequested;
     std::function<void (std::shared_ptr<AudioTrack>, juce::uint32 clipId, double seconds)> onContextMenu;
-    std::function<void()> onClipsEdited;
+    /** Un clip se movió o recortó con el ratón (ya aplicado a la pista). */
+    std::function<void (std::shared_ptr<AudioTrack>, std::vector<AudioClip> clipsBefore, const juce::String& actionName)> onClipsEdited;
     std::function<void()> onTracksReordered;
     std::function<void (AudioTrack&)> onTrackRenamed;
     std::function<void (int insertIndex)> onAddTrack;       // -1 = al final

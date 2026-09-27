@@ -217,7 +217,11 @@ void TrackListView::refresh()
         row->onReorderDrag = [this] (TrackView& view, int parentY, int grabY) { reorderDrag (view, parentY, grabY); };
         row->onReorderEnd = [this] (TrackView& view) { reorderEnd (view); };
         row->onClipClicked = [this] (TrackView& view, juce::uint32 clipId) { selectClip (view.getTrackPointer(), clipId); };
-        row->onClipsEdited = [this] { if (onClipsEdited != nullptr) onClipsEdited(); };
+        row->onClipsEdited = [this] (TrackView& view, std::vector<AudioClip> clipsBefore, const juce::String& actionName)
+        {
+            if (onClipsEdited != nullptr)
+                onClipsEdited (view.getTrackPointer(), std::move (clipsBefore), actionName);
+        };
         row->onWheel = [this] (int x, const juce::MouseEvent& e, const juce::MouseWheelDetails& w) { return handleWheel (x, e, w); };
         row->onContextMenu = [this] (TrackView& view, juce::uint32 clipId, double seconds)
         {
@@ -709,6 +713,11 @@ void TrackListView::updateRecordingLane()
 
 void TrackListView::seekTo (double seconds)
 {
+    // Mientras se graba, la toma ocupa un tramo continuo desde donde empezó:
+    // saltar la desalinearía con lo que suena.
+    if (engine.isRecording())
+        return;
+
     engine.getTransport().setPosition (static_cast<juce::int64> (seconds * engine.getSampleRate()));
 }
 

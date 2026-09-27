@@ -3,11 +3,97 @@
 #include "Audio/AudioFileLoader.h"
 #include "Utils/Strings.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 
 namespace stemlab
 {
+namespace
+{
+    bool containsTrack (const AudioMixer& mixer, const AudioTrack* track)
+    {
+        const auto& tracks = mixer.getTracks();
+        return std::any_of (tracks.begin(), tracks.end(), [track] (const auto& t) { return t.get() == track; });
+    }
+
+    /** Cambio de la lista de clips de una pista: guarda la lista de antes y la
+        de después. Los clips comparten el audio (ClipSource), así que copiar
+        las listas no duplica muestras. */
+    class ClipEditAction final : public juce::UndoableAction
+    {
+    public:
+        ClipEditAction (AudioMixer& m, std::function<void()> changed, std::shared_ptr<AudioTrack> t,
+                        std::vector<AudioClip> clipsBefore, std::vector<AudioClip> clipsAfter)
+            : mixer (m), onChanged (std::move (changed)), track (std::move (t)),
+              before (std::move (clipsBefore)), after (std::move (clipsAfter))
+        {
+        }
+
+        bool perform() override     { return apply (after); }
+        bool undo() override        { return apply (before); }
+
+    private:
+        bool apply (const std::vector<AudioClip>& clips)
+        {
+            // La pista ya no está en el proyecto: el historial deja de ser válido.
+            if (! containsTrack (mixer, track.get()))
+                return false;
+
+            track->setClips (clips);
+            onChanged();
+            return true;
+        }
+
+        AudioMixer& mixer;
+        std::function<void()> onChanged;
+        std::shared_ptr<AudioTrack> track;
+        std::vector<AudioClip> before, after;
+    };
+
+    /** Eliminar una pista. La acción conserva la pista (con sus clips, volumen
+        y efectos) para poder devolverla a su sitio al deshacer. */
+    class RemoveTrackAction final : public juce::UndoableAction
+    {
+    public:
+        RemoveTrackAction (AudioMixer& m, std::function<void()> changed, std::shared_ptr<AudioTrack> t)
+            : mixer (m), onChanged (std::move (changed)), track (std::move (t))
+        {
+        }
+
+        bool perform() override
+        {
+            const auto& tracks = mixer.getTracks();
+            const auto it = std::find (tracks.begin(), tracks.end(), track);
+
+            if (it == tracks.end())
+                return false;
+
+            index = static_cast<int> (std::distance (tracks.begin(), it));
+            track->setArmed (false);
+            mixer.removeTrack (track.get());
+            onChanged();
+            return true;
+        }
+
+        bool undo() override
+        {
+            if (containsTrack (mixer, track.get()))
+                return false;
+
+            mixer.addTrack (track, juce::jmin (index, static_cast<int> (mixer.getTracks().size())));
+            onChanged();
+            return true;
+        }
+
+    private:
+        AudioMixer& mixer;
+        std::function<void()> onChanged;
+        std::shared_ptr<AudioTrack> track;
+        int index = 0;
+    };
+}
+
 ProjectManager::ProjectManager (AudioEngine& audioEngine)
     : engine (audioEngine),
       loaderPool (juce::ThreadPoolOptions{}.withThreadName ("StemLab Loader").withNumberOfThreads (1))
@@ -32,6 +118,7 @@ void ProjectManager::setBpm (double bpm)
 void ProjectManager::newProject()
 {
     ++generation;
+    undoManager.clearUndoHistory();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
     engine.getMixer().getMasterVolume().resetToDefault();
@@ -81,6 +168,7 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
     }
 
     ++generation;
+    undoManager.clearUndoHistory();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
     engine.getMixer().getMasterVolume().set (document.masterVolumeDb);
@@ -212,10 +300,17 @@ std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& b
 
 void ProjectManager::removeTrack (const AudioTrack& track)
 {
-    // El shared_ptr devuelto se libera aquí, en el hilo de mensajes. Los
-    // archivos de audio se conservan en disco.
-    engine.getMixer().removeTrack (&track);
-    sendChangeMessage();
+    // La pista queda guardada en el historial (en el hilo de mensajes) para
+    // poder recuperarla. Los archivos de audio se conservan en disco.
+    for (const auto& t : engine.getMixer().getTracks())
+    {
+        if (t.get() == &track)
+        {
+            performUndoable (std::make_unique<RemoveTrackAction> (engine.getMixer(), [this] { notifyTracksEdited(); }, t),
+                             "Eliminar pista");
+            return;
+        }
+    }
 }
 
 std::shared_ptr<AudioTrack> ProjectManager::getArmedTrack() const
@@ -266,6 +361,46 @@ void ProjectManager::notifyTracksEdited()
 {
     engine.getMixer().updateContentLength();
     sendChangeMessage();
+}
+
+//==============================================================================
+void ProjectManager::performUndoable (std::unique_ptr<juce::UndoableAction> action, const juce::String& actionName)
+{
+    undoManager.beginNewTransaction (actionName);
+    undoManager.perform (action.release());
+}
+
+void ProjectManager::editClips (const std::shared_ptr<AudioTrack>& track, std::vector<AudioClip> newClips,
+                                const juce::String& actionName)
+{
+    if (track == nullptr)
+        return;
+
+    performUndoable (std::make_unique<ClipEditAction> (engine.getMixer(), [this] { notifyTracksEdited(); }, track,
+                                                       track->getClips(), std::move (newClips)),
+                     actionName);
+}
+
+void ProjectManager::clipsEdited (const std::shared_ptr<AudioTrack>& track, std::vector<AudioClip> clipsBefore,
+                                  const juce::String& actionName)
+{
+    if (track == nullptr)
+        return;
+
+    // perform() vuelve a aplicar la lista actual: no cambia nada, solo avisa.
+    performUndoable (std::make_unique<ClipEditAction> (engine.getMixer(), [this] { notifyTracksEdited(); }, track,
+                                                       std::move (clipsBefore), track->getClips()),
+                     actionName);
+}
+
+bool ProjectManager::undo()
+{
+    return undoManager.undo();
+}
+
+bool ProjectManager::redo()
+{
+    return undoManager.redo();
 }
 
 juce::String ProjectManager::createTrackName (const juce::String& baseName) const
@@ -427,9 +562,14 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
 
         if (target != nullptr && std::find (tracks.begin(), tracks.end(), target) != tracks.end())
         {
-            for (auto& clip : clips)
-                target->addClip (std::move (clip));
+            // Va al final de la lista: queda (y suena) encima de lo que ya
+            // hubiera en la pista. Se puede deshacer como cualquier edición.
+            auto updated = target->getClips();
 
+            for (auto& clip : clips)
+                updated.push_back (std::move (clip));
+
+            editClips (target, std::move (updated), "Grabar fragmento");
             continue;
         }
 
@@ -475,7 +615,10 @@ void ProjectManager::reloadAllTracks()
     for (size_t i = 0; i < requests.size() && i < tracks.size(); ++i)
         requests[i].armed = tracks[i]->isArmed();
 
+    // Las pistas se vuelven a crear (y los clips se miden en muestras de la
+    // frecuencia anterior): el historial ya no sirve.
     ++generation;
+    undoManager.clearUndoHistory();
     engine.getMixer().removeAllTracks();
     sendChangeMessage();
     loadTracks (std::move (requests), [this, wasClean] (juce::Result)
