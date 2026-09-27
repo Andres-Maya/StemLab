@@ -10,6 +10,8 @@
 #include "TrackListView.h"
 #include "TransportBar.h"
 
+#include <optional>
+
 namespace stemlab
 {
 /**
@@ -57,6 +59,17 @@ private:
     void saveProjectAs();
     void importAudio();
     void deleteSelectedTrack();
+    void removeTrack (AudioTrack& track);
+    void addTrack();
+    void toggleArm (std::shared_ptr<AudioTrack> track);
+
+    // Edición de fragmentos (clips)
+    void splitAtPlayhead();
+    void copySelectedClip();
+    void cutSelectedClip();
+    void pasteClip (std::shared_ptr<AudioTrack> track, juce::int64 position);
+    void deleteSelectedClip();
+    void showClipMenu (std::shared_ptr<AudioTrack> track, juce::uint32 clipId, double seconds);
     void showProjectFolder();
     void showAudioSettings();
     void togglePlayPause();
@@ -85,6 +98,9 @@ private:
     StatusBar statusBar;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+    std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
+    std::weak_ptr<AudioTrack> recordingTarget;      // pista donde va la grabación en curso
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };
