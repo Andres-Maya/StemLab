@@ -61,16 +61,21 @@ namespace
                 CHECK (clips[1].timelineStart >= clips[0].getEnd() - 4800 && clips[1].timelineStart <= afterFirst,
                        "el segundo fragmento va a continuación del primero (" << (int) clips[0].getEnd() << " -> " << (int) clips[1].timelineStart << ")");
 
-            /* Píxeles rojos de la vista previa sobre la pista armada, durante la 2ª toma. */
-            const auto lane = juce::ImageFileFormat::loadFrom (outputFolder().getChildFile ("lane2.png"));
-            int redPixels = 0;
+            /* Vista previa durante la 1ª toma (la pista aún no tiene fragmentos): se
+               dibuja con el color de la pista, no en rojo. */
+            const auto lane = juce::ImageFileFormat::loadFrom (outputFolder().getChildFile ("lane.png"));
+            const auto trackColour = trackColourFor (target->getName(), 0);
+            int trackPixels = 0, redPixels = 0;
             for (int y = 30; y < lane.getHeight(); ++y)
                 for (int x = TrackView::headerWidth + 2; x < lane.getWidth(); ++x)
                 {
                     const auto c = lane.getPixelAt (x, y);
+                    if (std::abs (c.getRed() - trackColour.getRed()) < 24 && std::abs (c.getGreen() - trackColour.getGreen()) < 24
+                        && std::abs (c.getBlue() - trackColour.getBlue()) < 24) ++trackPixels;
                     if (c.getRed() > 180 && c.getGreen() < 110 && c.getBlue() < 110) ++redPixels;
                 }
-            CHECK (redPixels > 50, "la toma en curso se dibuja en directo dentro de la pista (" << redPixels << " píxeles)");
+            CHECK (trackPixels > 50, "la toma en curso se dibuja en directo con el color de la pista (" << trackPixels << " píxeles)");
+            CHECK (redPixels == 0, "y nada de la toma se ve en rojo (" << redPixels << " píxeles rojos)");
 
             /* Tercera toma con el cabezal en mitad de la primera: como en MainComponent,
                la grabación empieza después del audio que ya hay (nunca encima). */
