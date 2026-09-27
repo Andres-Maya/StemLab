@@ -86,7 +86,8 @@ public:
     void setArmedTrack (const std::shared_ptr<AudioTrack>& track);
 
     /** Añade la grabación como un clip nuevo de la pista indicada (o de una
-        pista nueva si ya no existe). */
+        pista nueva si ya no existe), recortada al hueco libre donde empieza:
+        nunca tapa el audio que ya tiene la pista. */
     void addRecording (const RecordingInfo& recording, std::weak_ptr<AudioTrack> target, Callback onDone);
 
     /** Avisar tras editar clips (actualiza la duración y la interfaz). */

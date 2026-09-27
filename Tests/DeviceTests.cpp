@@ -72,16 +72,21 @@ namespace
                 }
             CHECK (redPixels > 50, "la toma en curso se dibuja en directo dentro de la pista (" << redPixels << " píxeles)");
 
-            /* Tercera toma ENCIMA de la primera: el cabezal se coloca en mitad de su audio. */
+            /* Tercera toma con el cabezal en mitad de la primera: como en MainComponent,
+               la grabación empieza después del audio que ya hay (nunca encima). */
             const auto firstTake = target->getClips().front();
             const auto middle = firstTake.timelineStart + firstTake.length / 2;
-            engine.getTransport().setPosition (middle);
-            CHECK (recordFor (1000, "lane3.png").wasOk(), "tercera toma, empezando en mitad de la primera");
+            const auto secondEnd = target->getClips().back().getEnd();
+            engine.getTransport().setPosition (ClipEditing::findFreeSpace (target->getClips(), middle, 1));
+            CHECK (recordFor (1000, "lane3.png").wasOk(), "tercera toma, con el cabezal sobre la primera");
             const auto layered = target->getClips();
-            CHECK (engine.getMixer().getTracks().size() == 1 && layered.size() == 3
-                       && layered.back().timelineStart <= middle && layered.back().timelineStart > middle - 4800,
-                   "queda en la misma pista, donde estaba el cabezal (" << (int) middle << " -> "
-                       << (int) layered.back().timelineStart << ") y encima (última de la lista)");
+            auto overlaps = false;
+            for (size_t i = 0; i < layered.size(); ++i)
+                for (size_t j = i + 1; j < layered.size(); ++j)
+                    overlaps = overlaps || (layered[i].timelineStart < layered[j].getEnd() && layered[j].timelineStart < layered[i].getEnd());
+            CHECK (engine.getMixer().getTracks().size() == 1 && layered.size() == 3 && layered.back().timelineStart == secondEnd && ! overlaps,
+                   "queda en la misma pista, justo después de las tomas anteriores (" << (int) secondEnd << " -> "
+                       << (int) layered.back().timelineStart << ") y sin solaparse");
 
             /* Edición visual: dividir la primera toma y separar las mitades. */
             auto edited = target->getClips();

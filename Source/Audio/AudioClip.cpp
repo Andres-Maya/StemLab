@@ -84,5 +84,75 @@ bool remove (std::vector<AudioClip>& clips, juce::uint32 clipId)
     clips.erase (it);
     return true;
 }
+
+juce::int64 findFreeSpace (const std::vector<AudioClip>& clips, juce::int64 position, juce::int64 length)
+{
+    position = juce::jmax<juce::int64> (0, position);
+    length = juce::jmax<juce::int64> (1, length);
+
+    // Mientras algún clip ocupe parte de [position, position + length), se
+    // salta a su final. Termina porque position solo avanza.
+    for (auto moved = true; moved;)
+    {
+        moved = false;
+
+        for (const auto& clip : clips)
+        {
+            if (clip.length > 0 && clip.timelineStart < position + length && clip.getEnd() > position)
+            {
+                position = clip.getEnd();
+                moved = true;
+            }
+        }
+    }
+
+    return position;
+}
+
+std::pair<juce::int64, juce::int64> freeGapAt (const std::vector<AudioClip>& clips, juce::int64 position)
+{
+    const auto start = findFreeSpace (clips, position, 1);
+    auto end = std::numeric_limits<juce::int64>::max();
+
+    for (const auto& clip : clips)
+        if (clip.length > 0 && clip.timelineStart >= start)
+            end = juce::jmin (end, clip.timelineStart);
+
+    return { start, end };
+}
+
+std::pair<juce::int64, juce::int64> freeRangeAround (const std::vector<AudioClip>& clips, const AudioClip& clip)
+{
+    juce::int64 lowest = 0;
+    auto highest = std::numeric_limits<juce::int64>::max();
+
+    for (const auto& other : clips)
+    {
+        if (other.id == clip.id || other.length <= 0)
+            continue;
+
+        if (other.getEnd() <= clip.timelineStart)
+            lowest = juce::jmax (lowest, other.getEnd());
+        else if (other.timelineStart >= clip.getEnd())
+            highest = juce::jmin (highest, other.timelineStart);
+    }
+
+    return { lowest, highest };
+}
+
+bool fitIntoFreeSpace (const std::vector<AudioClip>& existing, AudioClip& clip)
+{
+    const auto [gapStart, gapEnd] = freeGapAt (existing, clip.timelineStart);
+    const auto start = juce::jmax (gapStart, clip.timelineStart);
+    const auto end = juce::jmin (gapEnd, clip.getEnd());
+
+    if (end - start < minimumLength)
+        return false;
+
+    clip.sourceOffset += start - clip.timelineStart;
+    clip.timelineStart = start;
+    clip.length = end - start;
+    return true;
+}
 }
 }

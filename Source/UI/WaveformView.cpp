@@ -277,11 +277,18 @@ void WaveformView::mouseDrag (const juce::MouseEvent& event)
 
     auto edited = dragOriginal;
 
+    // Topes: el final del clip anterior y el principio del siguiente.
+    const auto [lowest, highest] = ClipEditing::freeRangeAround (clipsBeforeDrag, dragOriginal);
+
     switch (dragMode)
     {
-        case DragMode::move:        ClipEditing::move (edited, dragOriginal.timelineStart + delta); break;
-        case DragMode::trimStart:   ClipEditing::trimStart (edited, dragOriginal.timelineStart + delta); break;
-        case DragMode::trimEnd:     ClipEditing::trimEnd (edited, dragOriginal.getEnd() + delta); break;
+        case DragMode::move:
+            ClipEditing::move (edited, juce::jlimit (lowest, juce::jmax (lowest, highest - edited.length),
+                                                     dragOriginal.timelineStart + delta));
+            break;
+
+        case DragMode::trimStart:   ClipEditing::trimStart (edited, juce::jmax (lowest, dragOriginal.timelineStart + delta)); break;
+        case DragMode::trimEnd:     ClipEditing::trimEnd (edited, juce::jmin (highest, dragOriginal.getEnd() + delta)); break;
         case DragMode::none:
         case DragMode::seek:        return;
     }

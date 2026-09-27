@@ -174,7 +174,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress ('z', commandShift, 0))       { redo(); return true; }
     if (key == juce::KeyPress ('y', command, 0))            { redo(); return true; }
     if (key == juce::KeyPress (juce::KeyPress::deleteKey, command, 0)) { deleteSelectedTrack(); return true; }
-    if (key == juce::KeyPress::deleteKey)                   { deleteSelectedClip(); return true; }
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelection(); return true; }
     if (key == juce::KeyPress ('r'))                        { toggleRecording(); return true; }
     if (key == juce::KeyPress ('s'))                        { splitAtPlayhead(); return true; }
     if (key == juce::KeyPress ('x', command, 0))            { cutSelection(); return true; }
@@ -554,6 +554,16 @@ void MainComponent::exportMix()
     });
 }
 
+void MainComponent::deleteSelection()
+{
+    if (trackList.getSelectedClipId() != 0)
+        deleteSelectedClip();
+    else if (const auto track = trackList.getSelectedTrack())
+        removeTrack (*track);       // pide confirmación
+    else
+        statusBar.setMessage ("Selecciona un fragmento o una pista para eliminarlo.");
+}
+
 void MainComponent::deleteSelectedTrack()
 {
     if (const auto track = trackList.getSelectedTrack())
@@ -839,15 +849,22 @@ void MainComponent::pasteClip (std::shared_ptr<AudioTrack> track, juce::int64 po
         return;
     }
 
+    auto clips = track->getClips();
     auto clip = *clipboard;
     clip.id = AudioClip::createId();
-    clip.timelineStart = juce::jmax<juce::int64> (0, position);
 
-    auto clips = track->getClips();
+    // Nunca encima de otro audio de la pista: si el cabezal está sobre un
+    // fragmento, se pega justo después (en el primer hueco donde quepa).
+    position = juce::jmax<juce::int64> (0, position);
+    clip.timelineStart = ClipEditing::findFreeSpace (clips, position, clip.length);
+
     clips.push_back (clip);
     projects.editClips (track, std::move (clips), "Pegar fragmento");
     trackList.selectClip (track, clip.id);
-    statusBar.setMessage ("Fragmento pegado.");
+    statusBar.setMessage (clip.timelineStart == position
+                              ? juce::String ("Fragmento pegado.")
+                              : "Fragmento pegado a continuación del audio que había en "_u8 + formatTime ((double) position / engine.getSampleRate())
+                                    + ", en " + formatTime ((double) clip.timelineStart / engine.getSampleRate()) + ".");
 }
 
 void MainComponent::deleteSelectedClip()
@@ -954,6 +971,15 @@ void MainComponent::toggleRecording()
         trackList.selectTrack (target);
     }
 
+    // En una pista los fragmentos no se solapan: si el cabezal está sobre
+    // audio grabado, la toma empieza justo después (para grabar encima se usa
+    // otra pista).
+    const auto playhead = engine.getTransport().getPosition();
+    const auto start = ClipEditing::findFreeSpace (target->getClips(), playhead, 1);
+
+    if (start != playhead)
+        engine.getTransport().setPosition (start);
+
     const auto result = engine.startRecording (projects.createRecordingFile());
 
     if (result.failed())
@@ -966,7 +992,10 @@ void MainComponent::toggleRecording()
     // en directo sobre esa pista.
     recordingTarget = target;
     projects.setArmedTrack (target);
-    statusBar.setMessage ("Grabando en \"" + target->getName() + "\"... pulsa R para pausar y R para seguir en la misma pista.");
+    statusBar.setMessage ("Grabando en \"" + target->getName() + "\""
+                          + (start != playhead ? " a continuación del audio que ya tiene, desde "_u8 + formatTime ((double) start / engine.getSampleRate())
+                                               : juce::String())
+                          + "... pulsa R para pausar y R para seguir en la misma pista.");
 }
 
 void MainComponent::finishRecording()

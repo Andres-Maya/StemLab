@@ -680,14 +680,20 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
 
         if (target != nullptr && std::find (tracks.begin(), tracks.end(), target) != tracks.end())
         {
-            // Va al final de la lista: queda (y suena) encima de lo que ya
-            // hubiera en la pista. Se puede deshacer como cualquier edición.
+            // Los fragmentos de una pista no se solapan: la toma se recorta al
+            // hueco libre donde empieza (la compensación de latencia la
+            // adelanta unos milisegundos sobre el audio anterior, y si llega al
+            // fragmento siguiente se corta ahí). Se puede deshacer.
             auto updated = target->getClips();
+            const auto before = updated.size();
 
             for (auto& clip : clips)
-                updated.push_back (std::move (clip));
+                if (ClipEditing::fitIntoFreeSpace (updated, clip))
+                    updated.push_back (std::move (clip));
 
-            editClips (target, std::move (updated), "Grabar fragmento");
+            if (updated.size() > before)
+                editClips (target, std::move (updated), "Grabar fragmento");
+
             continue;
         }
 

@@ -208,6 +208,13 @@ namespace
             CHECK (tracks.size() == 1 && second->getClips().size() == 2 && second->getClips().back().timelineStart == 88200,
                    "con un fragmento seleccionado, Ctrl+C / Ctrl+V pegan el fragmento en el cabezal");
 
+            // Ctrl+V con el cabezal sobre audio: se pega justo después (enfrente), nunca encima.
+            engine.getTransport().setPosition (22050);
+            press ('v');
+            const auto afterPaste = second->getClips();
+            CHECK (afterPaste.size() == 3 && afterPaste.back().timelineStart == 44100,
+                   "Ctrl+V con el cabezal sobre audio pega el fragmento a continuación (44100), no encima");
+
             // Clic en la cabecera: se selecciona la pista entera (sin fragmento).
             list->selectClip (second, clip.id);
             if (auto* row = findChild<TrackView> (*list))
@@ -221,7 +228,7 @@ namespace
 
             press ('c');
             press ('v');
-            CHECK (tracks.size() == 2 && tracks[1]->getClips().size() == 2 && list->getSelectedTrack() == tracks[1],
+            CHECK (tracks.size() == 2 && tracks[1]->getClips().size() == 3 && list->getSelectedTrack() == tracks[1],
                    "sin fragmento seleccionado, Ctrl+C / Ctrl+V duplican la pista debajo y la seleccionan");
             CHECK (projects.getUndoDescription() == "Pegar pista", "pegar una pista se puede deshacer");
 
@@ -231,7 +238,7 @@ namespace
             press ('x');
             CHECK (tracks.size() == 1 && projects.getUndoDescription() == "Cortar pista", "Ctrl+X corta la pista seleccionada");
             press ('v');
-            CHECK (tracks.size() == 2 && tracks[1]->getClips().size() == 2, "y Ctrl+V la vuelve a pegar");
+            CHECK (tracks.size() == 2 && tracks[1]->getClips().size() == 3, "y Ctrl+V la vuelve a pegar");
 
             press ('z');
             press ('z');
@@ -243,6 +250,32 @@ namespace
             const auto clipsBefore = second->getClips().size();
             press ('v');
             CHECK (tracks.size() == 2 && second->getClips().size() == clipsBefore + 1, "Ctrl+V pega lo último que se copió (el fragmento)");
+
+            // Supr y Retroceso eliminan el fragmento seleccionado.
+            const auto count = second->getClips().size();
+            list->selectClip (second, second->getClips().back().id);
+            window.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey));
+            CHECK (second->getClips().size() == count - 1, "Supr elimina el fragmento seleccionado");
+            list->selectClip (second, second->getClips().back().id);
+            window.keyPressed (juce::KeyPress (juce::KeyPress::backspaceKey));
+            CHECK (second->getClips().size() == count - 2, "Retroceso también");
+
+            // Sin fragmento seleccionado (clic en la cabecera), Supr elimina la pista tras confirmar.
+            list->selectClip (second, 0);
+            window.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey));
+            runLoopUntil ([] { return juce::Component::getCurrentlyModalComponent() != nullptr; }, 3000);
+            auto* dialog = juce::Component::getCurrentlyModalComponent();
+            CHECK (dialog != nullptr, "Supr con la pista seleccionada pide confirmar su eliminación");
+
+            if (dialog != nullptr)
+            {
+                dialog->exitModalState (1);             // "Eliminar"
+                runLoopUntil ([&] { return tracks.size() == 1; }, 3000);
+            }
+
+            CHECK (tracks.size() == 1 && tracks.front() != second, "al confirmar se elimina la pista");
+            press ('z');
+            CHECK (tracks.size() == 2 && tracks.front() == second, "y Ctrl+Z la recupera");
         }
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);

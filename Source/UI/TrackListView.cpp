@@ -2,6 +2,7 @@
 
 #include "Utils/Strings.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iterator>
 
@@ -86,16 +87,22 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     const auto startX = (static_cast<double> (*startSample) - visibleStart * sampleRate) * pixelsPerSample;
     const auto endX = startX + static_cast<double> (peaks.size()) * binSize * pixelsPerSample;
 
-    // Se graba "encima" de lo que hubiera en la pista: se tapa esa zona.
+    // Solo se dibuja en el hueco libre de la pista: lo que quede fuera (unos
+    // milisegundos de latencia, o lo que pase del fragmento siguiente) se
+    // recorta al terminar, y el audio que ya había no se tapa.
+    const auto xForSample = [&] (juce::int64 sample)
+    {
+        return (static_cast<double> (sample) - visibleStart * sampleRate) * pixelsPerSample;
+    };
+
+    const auto left = std::max ({ 0.0, startX, xForSample (freeStart) });
+    const auto right = std::min ({ static_cast<double> (bounds.getRight()), endX, xForSample (freeEnd) });
     const auto area = bounds.reduced (0, 3).toFloat();
-    const auto region = juce::Rectangle<float>::leftTopRightBottom (juce::jmax (0.0f, (float) startX), area.getY(),
-                                                                    juce::jmin ((float) bounds.getRight(), (float) endX),
-                                                                    area.getBottom());
+    const auto region = juce::Rectangle<float>::leftTopRightBottom ((float) left, area.getY(), (float) right, area.getBottom());
+
     if (region.getWidth() <= 0.0f)
         return;
 
-    g.setColour (Palette::background);
-    g.fillRect (region);
     g.setColour (Palette::record.withAlpha (0.15f));
     g.fillRoundedRectangle (region, 4.0f);
 
@@ -107,7 +114,7 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
 
     auto drawColumn = [&]
     {
-        if (column >= 0 && column < bounds.getRight() && columnPeak > 0.0f)
+        if (column >= region.getX() && column < region.getRight() && columnPeak > 0.0f)
         {
             // Escala en dB (-60..0), como un medidor de grabación: los micrófonos
             // integrados captan bajo y en escala lineal apenas se verían.
@@ -719,6 +726,18 @@ void TrackListView::updateRecordingLane()
 
     recordingLane.startSample = engine.getRecordingClipStart();
     recordingLane.sampleRate = engine.getSampleRate();
+
+    if (recordingLane.startSample.has_value())
+    {
+        const auto [gapStart, gapEnd] = ClipEditing::freeGapAt (targetRow->getTrack().getClips(), *recordingLane.startSample);
+
+        if (gapStart != recordingLane.freeStart || gapEnd != recordingLane.freeEnd)
+        {
+            recordingLane.freeStart = gapStart;
+            recordingLane.freeEnd = gapEnd;
+            added = true;
+        }
+    }
 
     if (added)
         recordingLane.repaint();

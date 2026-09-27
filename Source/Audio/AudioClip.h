@@ -2,7 +2,9 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace stemlab
@@ -69,5 +71,28 @@ namespace ClipEditing
 
     /** Quita el clip de la lista. Devuelve true si existía. */
     bool remove (std::vector<AudioClip>& clips, juce::uint32 clipId);
+
+    //==========================================================================
+    // En una pista los fragmentos no se solapan: grabar, pegar, mover y recortar
+    // siempre dejan cada fragmento en espacio libre. Para grabar encima de otro
+    // audio se usa otra pista.
+
+    /** Primera posición >= position donde cabe un clip de esa longitud sin
+        solaparse con ninguno (si el cabezal está sobre audio, justo después). */
+    juce::int64 findFreeSpace (const std::vector<AudioClip>& clips, juce::int64 position, juce::int64 length);
+
+    /** Hueco libre que empieza en findFreeSpace (position, 1): [inicio, inicio
+        del siguiente clip), o hasta el infinito si no hay ninguno detrás. */
+    std::pair<juce::int64, juce::int64> freeGapAt (const std::vector<AudioClip>& clips, juce::int64 position);
+
+    /** Límites para mover o recortar el clip sin pisar a sus vecinos: el fin
+        del anterior y el principio del siguiente. */
+    std::pair<juce::int64, juce::int64> freeRangeAround (const std::vector<AudioClip>& clips, const AudioClip& clip);
+
+    /** Recorta un clip nuevo (una grabación) al hueco libre donde empieza entre
+        los clips que ya hay: el principio se lleva al final del audio que lo
+        tape y el final, al principio del siguiente clip. Devuelve false si no
+        queda nada. */
+    bool fitIntoFreeSpace (const std::vector<AudioClip>& existing, AudioClip& clip);
 }
 }
