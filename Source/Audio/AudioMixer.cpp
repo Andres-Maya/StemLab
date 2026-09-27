@@ -10,7 +10,7 @@ AudioMixer::AudioMixer()
     masterGain.setCurrentAndTargetValue (1.0f);
 }
 
-void AudioMixer::addTrack (std::shared_ptr<AudioTrack> track)
+void AudioMixer::addTrack (std::shared_ptr<AudioTrack> track, int insertIndex)
 {
     jassert (track != nullptr);
 
@@ -26,7 +26,10 @@ void AudioMixer::addTrack (std::shared_ptr<AudioTrack> track)
         if (! juce::exactlyEqual (rate, preparedSampleRate.load()) || blockSize != preparedBlockSize.load())
             track->prepare (preparedSampleRate.load(), preparedBlockSize.load());
 
-        tracks.push_back (std::move (track));
+        if (juce::isPositiveAndNotGreaterThan (insertIndex, static_cast<int> (tracks.size())))
+            tracks.insert (tracks.begin() + insertIndex, std::move (track));
+        else
+            tracks.push_back (std::move (track));
     }
 
     updateContentLength();

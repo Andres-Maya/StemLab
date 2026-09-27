@@ -170,10 +170,10 @@ void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone)
     loadTracks (std::move (requests), std::move (onDone));
 }
 
-std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName)
+std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName, int insertIndex)
 {
     auto track = std::make_shared<AudioTrack> (createTrackName (baseName));
-    engine.getMixer().addTrack (track);
+    engine.getMixer().addTrack (track, insertIndex);
     sendChangeMessage();
     return track;
 }
