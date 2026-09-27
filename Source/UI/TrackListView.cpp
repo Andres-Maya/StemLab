@@ -103,10 +103,14 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     if (region.getWidth() <= 0.0f)
         return;
 
-    g.setColour (Palette::record.withAlpha (0.15f));
+    // Con el aspecto de un fragmento de la pista (su color), no en rojo: al
+    // terminar, la toma queda igual que se veía mientras se grababa.
+    g.setColour (colour.withAlpha (0.12f));
     g.fillRoundedRectangle (region, 4.0f);
+    g.setColour (colour.withAlpha (0.5f));
+    g.drawRoundedRectangle (region, 4.0f, 1.0f);
 
-    g.setColour (Palette::record);
+    g.setColour (colour);
     const auto centreY = area.getCentreY();
     const auto halfHeight = area.getHeight() * 0.5f - 2.0f;
     int column = -1;
@@ -726,6 +730,12 @@ void TrackListView::updateRecordingLane()
 
     recordingLane.startSample = engine.getRecordingClipStart();
     recordingLane.sampleRate = engine.getSampleRate();
+
+    if (recordingLane.colour != targetRow->getColour())
+    {
+        recordingLane.colour = targetRow->getColour();
+        added = true;
+    }
 
     if (recordingLane.startSample.has_value())
     {

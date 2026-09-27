@@ -3,6 +3,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "Audio/AudioEngine.h"
+#include "StemLabLookAndFeel.h"
 #include "TimeRuler.h"
 #include "TrackView.h"
 
@@ -102,7 +103,8 @@ private:
     };
 
     /** Capa que dibuja, sobre la pista en la que se graba, la toma en curso a
-        medida que llega el audio. */
+        medida que llega el audio, con el color de la pista (igual que quedará
+        el fragmento al terminar). */
     struct RecordingLane final : public juce::Component
     {
         RecordingLane()    { setInterceptsMouseClicks (false, false); }
@@ -115,6 +117,7 @@ private:
         double sampleRate = 48000.0;
         double visibleStart = 0.0;
         double visibleLength = 60.0;
+        juce::Colour colour { Palette::accent };   // el de la pista en la que se graba
     };
 
     /** Línea del cabezal, transparente a los clics. */
