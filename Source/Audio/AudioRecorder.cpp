@@ -47,6 +47,11 @@ juce::Result AudioRecorder::start (const juce::File& file, double sampleRate, in
     currentFile = file;
     startPosition.store (-1);
 
+    // El hilo de audio aún no escribe (activeWriter es nulo): se puede reiniciar.
+    previewFifo.reset();
+    binPeak = 0.0f;
+    binCount = 0;
+
     const juce::ScopedLock lock (writerLock);
     activeWriter.store (threadedWriter.get());
     return juce::Result::ok();
@@ -91,5 +96,38 @@ void AudioRecorder::write (const float* const* input, int numInputChannels, int 
         startPosition.store (timelinePosition);
 
     writer->write (channels, numSamples);
+
+    // Picos para dibujar la grabación en directo.
+    for (int i = 0; i < numSamples; ++i)
+    {
+        for (int ch = 0; ch < numChannelsToRecord; ++ch)
+            binPeak = juce::jmax (binPeak, std::abs (channels[ch][i]));
+
+        if (++binCount == previewBinSize)
+        {
+            pushPreviewPeak (binPeak);
+            binPeak = 0.0f;
+            binCount = 0;
+        }
+    }
+}
+
+void AudioRecorder::pushPreviewPeak (float peak) noexcept
+{
+    const auto scope = previewFifo.write (1);
+
+    if (scope.blockSize1 > 0)
+        previewPeaks[static_cast<size_t> (scope.startIndex1)] = peak;
+    else if (scope.blockSize2 > 0)
+        previewPeaks[static_cast<size_t> (scope.startIndex2)] = peak;
+}
+
+int AudioRecorder::readPreviewPeaks (float* dest, int maxPeaks) noexcept
+{
+    const auto scope = previewFifo.read (juce::jmin (maxPeaks, previewFifo.getNumReady()));
+    int count = 0;
+
+    scope.forEach ([&] (int index) { dest[count++] = previewPeaks[static_cast<size_t> (index)]; });
+    return count;
 }
 }

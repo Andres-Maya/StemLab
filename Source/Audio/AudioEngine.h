@@ -72,6 +72,14 @@ public:
     RecordingInfo stopRecording();
     bool isRecording() const noexcept                       { return recorder.isRecording(); }
 
+    /** Posición en la línea de tiempo donde quedará la grabación en curso (ya
+        compensada por latencia), o -1 si todavía no ha llegado audio. */
+    juce::int64 getRecordingClipStart() const noexcept;
+
+    /** Picos nuevos de la grabación en curso, uno por cada
+        AudioRecorder::previewBinSize muestras (hilo de mensajes). */
+    int readRecordingPeaks (float* dest, int maxPeaks) noexcept { return recorder.readPreviewPeaks (dest, maxPeaks); }
+
     /** Se llama en el hilo de mensajes si el dispositivo cambió de sample rate
         y hay pistas cargadas a otra frecuencia (hay que recargarlas). */
     std::function<void()> onSampleRateChanged;

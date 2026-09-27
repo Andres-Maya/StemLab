@@ -2,6 +2,7 @@
 
 #include "Utils/Strings.h"
 
+#include <iterator>
 namespace stemlab
 {
 namespace
@@ -23,6 +24,69 @@ void TrackListView::Content::paint (juce::Graphics& g)
     }
 }
 
+void TrackListView::RecordingLane::paint (juce::Graphics& g)
+{
+    auto bounds = getLocalBounds();
+    auto header = bounds.removeFromLeft (TrackView::headerWidth);
+
+    g.setColour (Palette::panel);
+    g.fillRect (header);
+    g.setColour (Palette::record);
+    g.fillRect (header.removeFromLeft (4));
+    g.fillEllipse (header.getX() + 12.0f, header.getCentreY() - 6.0f, 12.0f, 12.0f);
+
+    g.setColour (Palette::text);
+    g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    g.drawText ("Grabando...", header.withTrimmedLeft (32), juce::Justification::centredLeft, false);
+
+    g.setColour (Palette::background);
+    g.fillRect (bounds);
+
+    if (startSample < 0 || peaks.empty() || bounds.getWidth() <= 0)
+        return;
+
+    // Cada pico cubre previewBinSize muestras; se agrupan por columna de píxeles.
+    const auto pixelsPerSample = bounds.getWidth() / (timelineLength * sampleRate);
+    const auto binSize = static_cast<double> (AudioRecorder::previewBinSize);
+    const auto startX = bounds.getX() + static_cast<double> (startSample) * pixelsPerSample;
+    const auto endX = startX + static_cast<double> (peaks.size()) * binSize * pixelsPerSample;
+
+    const auto area = bounds.reduced (0, 5).toFloat();
+    g.setColour (Palette::record.withAlpha (0.12f));
+    g.fillRoundedRectangle (juce::Rectangle<float>::leftTopRightBottom ((float) startX, area.getY(), (float) endX, area.getBottom()), 4.0f);
+
+    g.setColour (Palette::record);
+    const auto centreY = area.getCentreY();
+    const auto halfHeight = area.getHeight() * 0.5f;
+    int column = -1;
+    float columnPeak = 0.0f;
+
+    auto drawColumn = [&]
+    {
+        if (column >= bounds.getX() && column < bounds.getRight() && columnPeak > 0.0f)
+        {
+            const auto h = juce::jmax (1.0f, juce::jmin (1.0f, columnPeak) * halfHeight);
+            g.fillRect ((float) column, centreY - h, 1.0f, h * 2.0f);
+        }
+    };
+
+    for (size_t i = 0; i < peaks.size(); ++i)
+    {
+        const auto x = static_cast<int> (startX + static_cast<double> (i) * binSize * pixelsPerSample);
+
+        if (x != column)
+        {
+            drawColumn();
+            column = x;
+            columnPeak = 0.0f;
+        }
+
+        columnPeak = juce::jmax (columnPeak, peaks[i]);
+    }
+
+    drawColumn();
+}
+
 void TrackListView::Playhead::paint (juce::Graphics& g)
 {
     if (x >= 0)
@@ -39,6 +103,7 @@ TrackListView::TrackListView (AudioEngine& audioEngine)
     ruler.onSeek = [this] (double seconds) { seekTo (seconds); };
     addAndMakeVisible (ruler);
 
+    content.addChildComponent (recordingLane);
     content.addAndMakeVisible (playhead);
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
@@ -88,7 +153,7 @@ void TrackListView::refresh()
 
     // Las filas de pistas eliminadas se destruyen aquí (y liberan su pista).
     rows = std::move (newRows);
-    content.isEmpty = rows.empty();
+    content.isEmpty = rows.empty() && ! recordingLane.isVisible();
     playhead.toFront (false);
 
     const auto current = selected.lock();
@@ -129,8 +194,8 @@ void TrackListView::resized()
 void TrackListView::layoutRows()
 {
     const auto width = viewport.getMaximumVisibleWidth();
-    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(),
-                                    static_cast<int> (rows.size()) * TrackView::preferredHeight);
+    const auto numRows = static_cast<int> (rows.size()) + (recordingLane.isVisible() ? 1 : 0);
+    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(), numRows * TrackView::preferredHeight);
 
     content.setSize (width, height);
 
@@ -141,6 +206,9 @@ void TrackListView::layoutRows()
         row->setBounds (0, y, width, TrackView::preferredHeight);
         y += TrackView::preferredHeight;
     }
+
+    // La fila de grabación va debajo de las pistas existentes.
+    recordingLane.setBounds (0, y, width, TrackView::preferredHeight);
 
     playhead.setBounds (TrackView::headerWidth, 0, juce::jmax (0, width - TrackView::headerWidth), height);
 
@@ -154,12 +222,55 @@ void TrackListView::updateTimeline()
     const auto contentSeconds = static_cast<double> (engine.getMixer().getContentLength()) / sampleRate;
 
     // Un poco de margen a la derecha para poder grabar después del final.
-    timelineLength = juce::jmax (30.0, contentSeconds * 1.05);
+    setTimelineLength (juce::jmax (30.0, contentSeconds * 1.05));
+}
 
-    ruler.setTimelineLength (timelineLength);
+void TrackListView::setTimelineLength (double seconds)
+{
+    timelineLength = seconds;
+    ruler.setTimelineLength (seconds);
+    recordingLane.timelineLength = seconds;
+    recordingLane.repaint();
 
     for (auto& row : rows)
-        row->setTimelineLength (timelineLength);
+        row->setTimelineLength (seconds);
+}
+
+void TrackListView::updateRecordingLane()
+{
+    const auto recording = engine.isRecording();
+
+    if (recording != recordingLane.isVisible())
+    {
+        recordingLane.peaks.clear();
+        recordingLane.startSample = -1;
+        recordingLane.setVisible (recording);
+        content.isEmpty = rows.empty() && ! recording;
+        layoutRows();
+        content.repaint();
+
+        // Que la fila de grabación quede a la vista aunque haya muchas pistas.
+        if (recording)
+            viewport.setViewPosition (0, juce::jmax (0, recordingLane.getBottom() - viewport.getViewHeight()));
+    }
+
+    if (! recording)
+        return;
+
+    float buffer[256];
+    auto added = false;
+
+    for (int n; (n = engine.readRecordingPeaks (buffer, (int) std::size (buffer))) > 0;)
+    {
+        recordingLane.peaks.insert (recordingLane.peaks.end(), buffer, buffer + n);
+        added = true;
+    }
+
+    recordingLane.startSample = engine.getRecordingClipStart();
+    recordingLane.sampleRate = engine.getSampleRate();
+
+    if (added)
+        recordingLane.repaint();
 }
 
 void TrackListView::seekTo (double seconds)
@@ -176,7 +287,14 @@ void TrackListView::timerCallback()
         updateTimeline();
     }
 
+    updateRecordingLane();
+
     const auto seconds = static_cast<double> (engine.getTransport().getPosition()) / engine.getSampleRate();
+
+    // Grabando más allá del final: la línea de tiempo se alarga por delante del cabezal.
+    if (engine.isRecording() && seconds > timelineLength - 2.0)
+        setTimelineLength (seconds * 1.25);
+
     ruler.setPlayheadSeconds (seconds);
 
     const auto x = playhead.getWidth() > 0
