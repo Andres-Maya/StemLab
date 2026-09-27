@@ -15,11 +15,22 @@ juce::Result ProjectSerializer::write (const Project& project, const ProjectDocu
 
     for (const auto& track : document.tracks)
     {
+        juce::Array<juce::var> clips;
+
+        for (const auto& clip : track.clips)
+        {
+            auto* clipObject = new juce::DynamicObject();
+            clipObject->setProperty ("file", project.toStoredPath (clip.file));
+            clipObject->setProperty ("start", clip.startSeconds);
+            clipObject->setProperty ("offset", clip.offsetSeconds);
+            clipObject->setProperty ("length", clip.lengthSeconds);
+            clips.add (juce::var (clipObject));
+        }
+
         auto* object = new juce::DynamicObject();
         object->setProperty ("name", track.name);
-        object->setProperty ("file", project.toStoredPath (track.file));
-        object->setProperty ("start", track.startSeconds);
         object->setProperty ("state", track.state);
+        object->setProperty ("clips", clips);
         tracks.add (juce::var (object));
     }
 
@@ -52,7 +63,9 @@ juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& pr
     if (root.getProperty ("format", {}).toString() != formatName)
         return juce::Result::fail ("El archivo no es un proyecto de StemLab.");
 
-    if (static_cast<int> (root.getProperty ("version", 0)) > currentVersion)
+    const auto version = static_cast<int> (root.getProperty ("version", 0));
+
+    if (version > currentVersion)
         return juce::Result::fail ("El proyecto se creó con una versión más reciente de StemLab."_u8);
 
     project = Project (root.getProperty ("name", projectFile.getParentDirectory().getFileName()).toString(),
@@ -70,9 +83,34 @@ juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& pr
         {
             TrackDescription description;
             description.name = track.getProperty ("name", "Pista").toString();
-            description.file = project.fromStoredPath (track.getProperty ("file", {}).toString());
-            description.startSeconds = track.getProperty ("start", 0.0);
             description.state = track.getProperty ("state", {});
+
+            if (version < 2)
+            {
+                // v1: un único archivo que empieza en "start" y dura entero.
+                ClipDescription clip;
+                clip.file = project.fromStoredPath (track.getProperty ("file", {}).toString());
+                clip.startSeconds = track.getProperty ("start", 0.0);
+                description.clips.push_back (clip);
+            }
+            else
+            {
+                const auto clipsVar = track.getProperty ("clips", {});
+
+                if (const auto* clips = clipsVar.getArray())
+                {
+                    for (const auto& clipVar : *clips)
+                    {
+                        ClipDescription clip;
+                        clip.file = project.fromStoredPath (clipVar.getProperty ("file", {}).toString());
+                        clip.startSeconds = clipVar.getProperty ("start", 0.0);
+                        clip.offsetSeconds = clipVar.getProperty ("offset", 0.0);
+                        clip.lengthSeconds = clipVar.getProperty ("length", -1.0);
+                        description.clips.push_back (clip);
+                    }
+                }
+            }
+
             document.tracks.push_back (std::move (description));
         }
     }
