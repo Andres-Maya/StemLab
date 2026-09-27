@@ -78,7 +78,12 @@ public:
 
     void systemRequestedQuit() override
     {
-        quit();
+        // Cerrar ventana, Archivo > Salir, Alt+F4 o apagado de Windows: si hay
+        // cambios sin guardar, la ventana pregunta antes de salir.
+        if (mainWindow != nullptr)
+            mainWindow->requestQuit();
+        else
+            quit();
     }
 
     void anotherInstanceStarted (const juce::String&) override

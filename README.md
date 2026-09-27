@@ -170,7 +170,7 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - **Shift + rueda**, o la rueda horizontal del touchpad, desplaza a los lados. También sirve la barra inferior.
    - También en **Proyecto → Vista**.
    - Durante la reproducción, la vista sigue al cabezal.
-8. **Archivo → Guardar proyecto como…**
+8. **Archivo → Guardar proyecto como…** Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
 
 Atajos de teclado:
 
@@ -201,5 +201,4 @@ Atajos de teclado:
   - Deshacer/rehacer la edición de fragmentos con `UndoManager`.
   - Arrastrar fragmentos entre pistas y ajuste a la rejilla de compases (BPM).
   - Reverb, Delay, Pitch Shift y Time Stretching.
-  - Aviso de cambios sin guardar al salir.
   - Pruebas unitarias del DSP y del serializador.

@@ -37,6 +37,14 @@ MainWindow::MainWindow (const juce::String& name, AudioEngine& engine, ProjectMa
 
 void MainWindow::closeButtonPressed()
 {
-    juce::JUCEApplication::getInstance()->systemRequestedQuit();
+    requestQuit();
+}
+
+void MainWindow::requestQuit()
+{
+    if (auto* content = dynamic_cast<MainComponent*> (getContentComponent()))
+        content->requestQuit();
+    else
+        juce::JUCEApplication::quit();
 }
 }
