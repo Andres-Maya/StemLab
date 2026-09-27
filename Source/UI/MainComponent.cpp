@@ -44,8 +44,12 @@ namespace
         copyTrackId,
         cutTrackId,
         pasteTrackId,
-        modelBaseId = 1000
+        clearRecentId,
+        modelBaseId = 1000,
+        recentProjectBaseId = 2000      // + índice en la lista de recientes
     };
+
+    constexpr int maxRecentProjects = 10;
 
     void addItem (juce::PopupMenu& menu, int id, const juce::String& text,
                   const juce::String& shortcut = {}, bool enabled = true, bool ticked = false)
@@ -65,14 +69,21 @@ namespace
 }
 
 //==============================================================================
-MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectManager, AIProcessManager& aiManager)
+MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectManager, AIProcessManager& aiManager,
+                              juce::PropertiesFile* userSettings)
     : engine (audioEngine),
       projects (projectManager),
       ai (aiManager),
       transportBar (engine, projects),
       trackList (engine),
-      statusBar (ai, projects)
+      statusBar (ai, projects),
+      settings (userSettings)
 {
+    recentProjects.setMaxNumberOfItems (maxRecentProjects);
+
+    if (settings != nullptr)
+        recentProjects.restoreFromString (settings->getValue ("recentProjects"));
+
    #if JUCE_MAC
     juce::MenuBarModel::setMacMainMenu (this);
    #else
@@ -219,6 +230,18 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
         case 0:
             addItem (menu, newProjectId, "Nuevo proyecto", "Ctrl+N");
             addItem (menu, openProjectId, "Abrir proyecto...", "Ctrl+O");
+        {
+            juce::PopupMenu recent;
+            recentProjects.createPopupMenuItems (recent, recentProjectBaseId, true, true);
+
+            if (recent.getNumItems() > 0)
+            {
+                recent.addSeparator();
+                addItem (recent, clearRecentId, "Borrar la lista");
+            }
+
+            menu.addSubMenu ("Abrir reciente", recent, recent.getNumItems() > 0);
+        }
             addItem (menu, saveProjectId, "Guardar proyecto", "Ctrl+S");
             addItem (menu, saveProjectAsId, "Guardar proyecto como...", "Ctrl+Shift+S");
             menu.addSeparator();
@@ -301,6 +324,12 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
 
 void MainComponent::menuItemSelected (int menuItemID, int)
 {
+    if (menuItemID >= recentProjectBaseId && menuItemID < recentProjectBaseId + maxRecentProjects)
+    {
+        openProjectFile (recentProjects.getFile (menuItemID - recentProjectBaseId));
+        return;
+    }
+
     if (menuItemID >= modelBaseId)
     {
         const auto models = ai.getSeparator().getAvailableModels();
@@ -346,6 +375,14 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         case zoomOutId:             trackList.zoomOut(); break;
         case zoomFitId:             trackList.zoomToFit(); break;
         case undoId:                undo(); break;
+        case clearRecentId:
+            recentProjects.clear();
+
+            if (settings != nullptr)
+                settings->setValue ("recentProjects", recentProjects.toString());
+
+            break;
+
         case copyTrackId:           copyTrack (trackList.getSelectedTrack()); break;
         case cutTrackId:            cutTrack (trackList.getSelectedTrack()); break;
         case pasteTrackId:          pasteTrack(); break;
@@ -361,7 +398,7 @@ bool MainComponent::isInterestedInFileDrag (const juce::StringArray& files)
     {
         const juce::File file (path);
 
-        if (file.getFileName() == "project.json" || projects.canImport (file))
+        if (Project::isProjectFile (file) || projects.canImport (file))
             return true;
     }
 
@@ -376,11 +413,9 @@ void MainComponent::filesDropped (const juce::StringArray& files, int, int)
     {
         const juce::File file (path);
 
-        if (file.getFileName() == "project.json")
+        if (Project::isProjectFile (file))
         {
-            if (ensureIdle ("abrir un proyecto"))
-                askToSaveChanges ([this, file] { projects.openProject (file, resultHandler ("Proyecto abierto.")); });
-
+            openProjectFile (file);
             return;
         }
 
@@ -416,22 +451,63 @@ void MainComponent::openProject()
     askToSaveChanges ([this]
     {
         const auto folder = defaultProjectsFolder();
-        fileChooser = std::make_unique<juce::FileChooser> ("Abrir proyecto (project.json)",
+        fileChooser = std::make_unique<juce::FileChooser> ("Abrir proyecto de StemLab",
                                                            folder.isDirectory() ? folder : juce::File(),
-                                                           "project.json");
+                                                           "*" + juce::String (Project::fileExtension) + ";project.json");
 
         fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                                   [this] (const juce::FileChooser& chooser)
         {
             const auto file = chooser.getResult();
 
-            if (file == juce::File())
-                return;
-
-            statusBar.setMessage ("Abriendo proyecto...");
-            projects.openProject (file, resultHandler ("Proyecto abierto."));
+            if (file != juce::File())
+                loadProject (file);
         });
     });
+}
+
+void MainComponent::openProjectFile (const juce::File& file)
+{
+    if (! ensureIdle ("abrir un proyecto"))
+        return;
+
+    askToSaveChanges ([this, file] { loadProject (file); });
+}
+
+void MainComponent::loadProject (const juce::File& file)
+{
+    statusBar.setMessage ("Abriendo " + file.getFileName() + "...");
+    const auto previous = projects.getProject().getProjectFile();
+
+    projects.openProject (file, [safe = juce::Component::SafePointer<MainComponent> (this), file, previous] (juce::Result result)
+    {
+        if (safe == nullptr)
+            return;
+
+        // Se abrió (aunque faltara algún audio, que se avisa): va a "Abrir reciente".
+        // Si no existe o no es un proyecto, se quita de la lista.
+        const auto opened = result.wasOk() || safe->projects.getProject().getProjectFile() != previous;
+
+        if (opened)
+            safe->rememberProject();
+        else if (! file.exists())
+            safe->recentProjects.removeFile (file);
+
+        safe->reportResult (result, "Proyecto abierto: " + safe->projects.getProject().getProjectFile().getFullPathName());
+    });
+}
+
+void MainComponent::rememberProject()
+{
+    const auto& project = projects.getProject();
+
+    if (project.isTemporary() || ! project.getProjectFile().existsAsFile())
+        return;
+
+    recentProjects.addFile (project.getProjectFile());
+
+    if (settings != nullptr)
+        settings->setValue ("recentProjects", recentProjects.toString());
 }
 
 void MainComponent::saveProject()
@@ -452,25 +528,31 @@ void MainComponent::saveProjectAs (std::function<void()> onSaved)
     if (! ensureIdle ("guardar el proyecto"))
         return;
 
-    const auto folder = defaultProjectsFolder();
+    // Se elige un archivo .stemlab; el proyecto va en una carpeta con su nombre
+    // (MiCancion/MiCancion.stemlab + audio/, stems/, recordings/, exports/).
+    const auto& project = projects.getProject();
+    const auto folder = project.isTemporary() ? defaultProjectsFolder() : project.getDirectory().getParentDirectory();
+    const auto suggestedName = project.isTemporary() ? juce::String ("MiProyecto") : project.getName();
+    const juce::String extension (Project::fileExtension);
     folder.createDirectory();
 
-    const auto& project = projects.getProject();
-    const auto suggestedName = project.isTemporary() ? juce::String ("MiProyecto") : project.getName();
+    fileChooser = std::make_unique<juce::FileChooser> ("Guardar proyecto de StemLab",
+                                                       folder.getChildFile (suggestedName + extension), "*" + extension);
 
-    fileChooser = std::make_unique<juce::FileChooser> ("Guardar proyecto como (nombre de la carpeta)",
-                                                       folder.getChildFile (suggestedName), juce::String());
-
-    fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+    fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::warnAboutOverwriting,
                               [this, onSaved = std::move (onSaved)] (const juce::FileChooser& chooser)
     {
-        const auto target = chooser.getResult();
+        const auto chosen = chooser.getResult();
 
-        if (target == juce::File())
+        if (chosen == juce::File())
             return;
 
-        const auto result = projects.saveAs (target);
-        reportResult (result, "Proyecto guardado en " + target.getFullPathName());
+        const auto result = projects.saveAs (ProjectManager::folderForSaveAs (chosen));
+        reportResult (result, "Proyecto guardado: " + projects.getProject().getProjectFile().getFullPathName());
+
+        if (result.wasOk())
+            rememberProject();
 
         // Se aplaza: la acción puede abrir otro FileChooser, y este no se puede
         // destruir mientras se ejecuta su propio callback.
