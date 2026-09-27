@@ -78,8 +78,10 @@ Al terminar, C++ carga los `*.wav` de la carpeta de salida como pistas nuevas y 
 
 ```
 MiProyecto/
-  project.json      nombre, BPM, master y, por pista: archivo (ruta relativa), inicio,
-                    volumen, paneo, mute, solo y parámetros de cada efecto
+  project.json      (versión 2) nombre, BPM, master y, por pista: sus clips (archivo
+                    relativo, inicio, desde dónde del archivo y duración, en segundos),
+                    volumen, paneo, mute, solo y parámetros de cada efecto.
+                    Los proyectos de la versión 1 se siguen abriendo.
   audio/            copias de los archivos importados
   stems/            resultados de la IA
   recordings/       grabaciones
@@ -149,9 +151,16 @@ La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg*
    - `htdemucs_ft`: 4 pistas, más calidad y más lento.
    - `htdemucs_6s`: 6 pistas, añade guitarra y piano.
 3. Cada pista tiene Mute, Solo, volumen y paneo. Al seleccionarla, el mezclador muestra su canal y su cadena de efectos.
-4. ⏺ graba una pista nueva desde la entrada elegida en **Audio → Configuración de audio**. La grabación se compensa por la latencia del dispositivo.
-   En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
-5. **Archivo → Guardar proyecto como…**
+4. **Grabar:** pulsa el botón ● de una pista para armarla y luego ⏺ o **R**. Si no hay ninguna armada, se crea una pista nueva.
+   - Pausar (**R** o Espacio) y volver a pulsar **R** sigue grabando **en la misma pista**, como un fragmento nuevo justo después del anterior.
+   - La entrada se elige en **Audio → Configuración de audio**, y la grabación se compensa por la latencia del dispositivo.
+   - En ese mismo diálogo, **Usar la salida predeterminada de Windows** (activada por defecto) hace que StemLab cambie solo a los audífonos al conectarlos. Si eliges otra salida a mano, la opción se desactiva.
+5. **Editar fragmentos** (clips). La edición no destructiva nunca modifica los archivos de audio:
+   - **Clic** en un fragmento lo selecciona. **Arrastrar el centro** lo desplaza. **Arrastrar un borde** lo recorta.
+   - **S** divide en el cabezal. **Ctrl+X / Ctrl+C / Ctrl+V** cortan, copian y pegan en el cabezal. **Supr** elimina el fragmento seleccionado.
+   - **Clic derecho** abre el menú de edición. Donde dos fragmentos se solapan suena el de encima.
+6. **Pistas:** los botones **+ Pista** y **- Pista**, sobre las cabeceras, añaden una pista vacía o eliminan la seleccionada.
+7. **Archivo → Guardar proyecto como…**
 
 Atajos de teclado:
 
@@ -159,8 +168,12 @@ Atajos de teclado:
 |---|---|
 | Espacio | reproducir / pausa |
 | Inicio | ir al principio |
-| R | grabar |
-| Supr | eliminar la pista seleccionada |
+| R | grabar / pausar la grabación (en la pista armada) |
+| S | dividir el fragmento en el cabezal |
+| Ctrl+X / C / V | cortar / copiar / pegar fragmento |
+| Supr | eliminar el fragmento seleccionado |
+| Ctrl+T | añadir pista |
+| Ctrl+Supr | eliminar la pista seleccionada |
 | Ctrl+N / O / S / I | nuevo / abrir / guardar / importar |
 | Ctrl+Shift+S | guardar como |
 
@@ -174,8 +187,8 @@ Atajos de teclado:
   - Exportar la mezcla a WAV con un render offline en `exports/`.
   - `SpectrogramView` con FFT.
   - Zoom y desplazamiento de la línea de tiempo.
-  - Mover clips.
-  - Deshacer/rehacer con `UndoManager`.
+  - Deshacer/rehacer la edición de fragmentos con `UndoManager`.
+  - Arrastrar fragmentos entre pistas y ajuste a la rejilla de compases (BPM).
   - Reverb, Delay, Pitch Shift y Time Stretching.
   - Aviso de cambios sin guardar al salir.
   - Pruebas unitarias del DSP y del serializador.
