@@ -14,7 +14,8 @@ namespace stemlab
     permite editarlos con el ratón.
 
       - Clic: mueve el cabezal ahí (también sobre un clip, que además queda
-        seleccionado). Así se puede grabar encima de lo que ya hay en la pista.
+        seleccionado). Lo que se grabe o pegue va a continuación del audio que
+        haya en el cabezal.
       - Arrastrar el centro: desplaza el clip.
       - Arrastrar un borde: recorta (reduce) el clip por ese lado.
       En una pista los fragmentos no se solapan. Al mover, un clip se detiene
@@ -23,10 +24,16 @@ namespace stemlab
       recortar, el borde se detiene en el vecino.
       - Clic derecho: menú de edición.
 
+    Animación al mover: el clip que se arrastra se "levanta" (sube un poco, con
+    sombra) y sigue al ratón por encima de los demás, que se oscurecen debajo;
+    los que se apartan o vuelven se deslizan, y al soltar el clip baja hasta su
+    sitio. Es solo visual: la pista ya tiene la posición final en todo momento.
+
     Cada archivo de audio tiene un juce::AudioThumbnail (resumen min/max) que
     comparten todos los clips que salen de él.
 */
-class WaveformView final : public juce::Component
+class WaveformView final : public juce::Component,
+                           private juce::Timer
 {
 public:
     WaveformView (AudioTrack& track, juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache);
@@ -52,6 +59,11 @@ public:
         si no, la rueda desplaza la lista de pistas en vertical. */
     std::function<bool (int x, const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
 
+    /** Estado de la animación (para las pruebas): dónde se dibuja el clip, en
+        muestras, y cuánto está levantado el que se arrastra (0 = apoyado). */
+    double getDrawnStart (juce::uint32 clipId) const;
+    float getLiftAmount() const noexcept    { return lift; }
+
     void paint (juce::Graphics&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -71,6 +83,15 @@ private:
     ClipHit findClipAt (int x) const;
     double secondsForX (int x) const;
     float xForSample (juce::int64 sample, double sampleRate) const;
+    float xForPosition (double sample, double sampleRate) const;
+
+    void drawClip (juce::Graphics&, const AudioClip&, double drawnStart, float liftAmount) const;
+    double shownStartOf (const AudioClip&) const;
+
+    /** Tras cambiar los clips: los que ya se veían se deslizan a su sitio nuevo. */
+    void syncShownStarts();
+    void startAnimation();
+    void timerCallback() override;
     juce::AudioThumbnail* thumbnailFor (const ClipSource* source) const;
 
     AudioTrack& track;
@@ -93,5 +114,13 @@ private:
     int dragStartX = 0;
     double clickSeconds = 0.0;
     bool dragChanged = false;
+
+    // Animación (solo visual). Posiciones en muestras de la línea de tiempo.
+    std::map<juce::uint32, double> shownStarts;     // dónde se dibuja cada clip; se acerca a su posición real
+    juce::uint32 floatingClip = 0;                  // clip que se arrastra: sigue al ratón, sin topes
+    double floatingStart = 0.0;
+    juce::uint32 topClip = 0;                       // se dibuja encima (arrastrándose o bajando al soltar)
+    float lift = 0.0f;                              // 0 = apoyado, 1 = levantado
+    double lastFrameMs = 0.0;
 };
 }
