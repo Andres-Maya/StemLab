@@ -17,8 +17,10 @@ namespace stemlab
         seleccionado). Así se puede grabar encima de lo que ya hay en la pista.
       - Arrastrar el centro: desplaza el clip.
       - Arrastrar un borde: recorta (reduce) el clip por ese lado.
-      Ni al mover ni al recortar un clip pasa por encima de sus vecinos: en una
-      pista los fragmentos no se solapan.
+      En una pista los fragmentos no se solapan. Al mover, un clip se detiene
+      contra su vecino hasta que su centro pasa del centro del vecino; entonces
+      salta al otro lado, y si ahí no cabe, los de delante se apartan. Al
+      recortar, el borde se detiene en el vecino.
       - Clic derecho: menú de edición.
 
     Cada archivo de audio tiene un juce::AudioThumbnail (resumen min/max) que
