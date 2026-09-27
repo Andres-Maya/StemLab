@@ -59,6 +59,9 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
     addAndMakeVisible (cancelButton);
 
     setSize (620, 580);
+
+    lastFrameMs = juce::Time::getMillisecondCounterHiRes();
+    startTimerHz (60);
 }
 
 void SeparationView::setSourceAudio (std::shared_ptr<const ClipSource> source, juce::int64 start, juce::int64 length)
@@ -86,31 +89,16 @@ void SeparationView::setFinished (bool didSucceed)
     advance (0.0);
 }
 
-void SeparationView::visibilityChanged()
-{
-    // Solo se anima mientras se ve.
-    if (isShowing())
-    {
-        lastFrameMs = juce::Time::getMillisecondCounterHiRes();
-        startTimerHz (60);
-    }
-    else
-    {
-        stopTimer();
-    }
-}
-
 void SeparationView::timerCallback()
 {
-    if (! isShowing())
-    {
-        stopTimer();
-        return;
-    }
-
+    // El temporizador funciona desde que se crea la vista; solo se anima
+    // mientras se ve (mostrar u ocultar la ventana no avisa a su contenido).
     const auto now = juce::Time::getMillisecondCounterHiRes();
-    advance (juce::jlimit (0.0, 0.1, (now - lastFrameMs) / 1000.0));
+    const auto elapsed = juce::jlimit (0.0, 0.1, (now - lastFrameMs) / 1000.0);
     lastFrameMs = now;
+
+    if (isShowing())
+        advance (elapsed);
 }
 
 void SeparationView::advance (double seconds)
@@ -284,12 +272,19 @@ void SeparationView::paint (juce::Graphics& g)
         placed.push_back ({ centre + (slot - centre) * easeOutCubic (appear), appear });
     }
 
-    // Detrás: los haces que unen la esfera central con cada pista.
+    // Detrás: los haces que unen el anillo con cada pista (salen del anillo,
+    // no del centro, para no cruzar el porcentaje).
     for (int i = 0; i < numStems; ++i)
-        if (placed[(size_t) i].appear > 0.0f)
-            drawBeam (g, centre, placed[(size_t) i].position, stems[(size_t) i].colour, placed[(size_t) i].appear, i);
+    {
+        const auto& [position, appear] = placed[(size_t) i];
+        const auto offset = position - centre;
+        const auto distance = offset.getDistanceFromOrigin();
 
-    drawMainOrb (g, centre, mainRadius);
+        if (appear > 0.0f && distance > mainRadius * 1.32f)
+            drawBeam (g, centre + offset * (mainRadius * 1.32f / distance), position, stems[(size_t) i].colour, appear, i);
+    }
+
+    drawCentre (g, centre, mainRadius);
 
     for (int i = 0; i < numStems; ++i)
     {
@@ -313,62 +308,35 @@ void SeparationView::paint (juce::Graphics& g)
     }
 }
 
-void SeparationView::drawMainOrb (juce::Graphics& g, juce::Point<float> centre, float radius) const
+void SeparationView::drawCentre (juce::Graphics& g, juce::Point<float> centre, float radius) const
 {
-    const auto t = (float) time;
-
-    fillGlow (g, centre, radius * 2.3f, sourceColour, 0.22f);
+    fillGlow (g, centre, radius * 2.3f, sourceColour, 0.18f);
     drawFrequencyRing (g, centre, radius);
-    fillSphere (g, centre, radius, sourceColour, 1.0f);
 
-    // Meridianos: elipses que se estrechan y ensanchan dan la sensación de giro.
-    juce::Graphics::ScopedSaveState clip (g);
-    juce::Path sphere;
-    sphere.addEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre));
-    g.reduceClipRegion (sphere);
+    // En el centro, el porcentaje. Mientras no hay porcentaje (cargando el
+    // modelo), unos puntos que se van completando.
+    juce::String text;
 
-    g.setColour (juce::Colours::white.withAlpha (0.16f));
+    if (progress < 0.0 && ! finished)
+        text = juce::String::repeatedString (".", 1 + static_cast<int> (std::fmod (time * 2.5, 3.0)));
+    else
+        text = juce::String (juce::roundToInt (shownProgress * 100.0)) + "%";
 
-    for (int m = 0; m < 4; ++m)
+    const auto area = juce::Rectangle<float> (radius * 2.4f, radius * 1.2f).withCentre (centre);
+    g.setFont (juce::FontOptions (radius * 0.7f, juce::Font::bold));
+
+    // Resplandor del color de la pista detrás del número, y el número en blanco.
+    for (const auto offset : { 3.0f, 1.5f })
     {
-        const auto phase = t * 1.3f + (float) m * juce::MathConstants<float>::pi / 4.0f;
-        const auto halfWidth = radius * std::abs (std::cos (phase));
-        g.drawEllipse (juce::Rectangle<float> (halfWidth * 2.0f, radius * 2.0f).withCentre (centre), 1.2f);
+        g.setColour (sourceColour.withAlpha (0.35f));
+        g.drawText (text, area.translated (-offset, 0.0f), juce::Justification::centred, false);
+        g.drawText (text, area.translated (offset, 0.0f), juce::Justification::centred, false);
+        g.drawText (text, area.translated (0.0f, -offset), juce::Justification::centred, false);
+        g.drawText (text, area.translated (0.0f, offset), juce::Justification::centred, false);
     }
 
-    g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 0.55f).withCentre (centre), 1.2f);
-
-    // Onda que recorre la esfera por dentro.
-    juce::Path wave;
-
-    for (int i = 0; i <= 60; ++i)
-    {
-        const auto x = -1.0f + 2.0f * (float) i / 60.0f;
-        const auto envelope = 1.0f - x * x;
-        const auto y = envelope * (0.22f * std::sin (x * 9.0f + t * 5.0f) + 0.12f * std::sin (x * 23.0f - t * 7.0f));
-        const juce::Point<float> point (centre.x + x * radius, centre.y + y * radius);
-
-        if (i == 0)
-            wave.startNewSubPath (point);
-        else
-            wave.lineTo (point);
-    }
-
-    g.setColour (juce::Colours::white.withAlpha (0.55f));
-    g.strokePath (wave, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-    // Brillo.
-    g.setColour (juce::Colours::white.withAlpha (0.22f));
-    g.fillEllipse (juce::Rectangle<float> (radius * 0.7f, radius * 0.4f).withCentre (centre.translated (-radius * 0.35f, -radius * 0.55f)));
-
-    // Porcentaje, con sombra para que se lea sobre la onda.
-    g.setFont (juce::FontOptions (radius * 0.42f, juce::Font::bold));
-    const auto text = progress < 0.0 && ! finished ? juce::String ("...") : juce::String (juce::roundToInt (shownProgress * 100.0)) + " %";
-    const auto textArea = juce::Rectangle<float> (radius * 2.0f, radius).withCentre (centre);
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.drawText (text, textArea.translated (1.5f, 2.0f), juce::Justification::centred, false);
     g.setColour (juce::Colours::white);
-    g.drawText (text, textArea, juce::Justification::centred, false);
+    g.drawText (text, area, juce::Justification::centred, false);
 }
 
 void SeparationView::drawFrequencyRing (juce::Graphics& g, juce::Point<float> centre, float radius) const
