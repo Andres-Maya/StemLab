@@ -61,6 +61,13 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
     setSize (620, 580);
 }
 
+void SeparationView::setSourceAudio (std::shared_ptr<const ClipSource> source, juce::int64 start, juce::int64 length)
+{
+    audio = std::move (source);
+    audioStart = juce::jmax<juce::int64> (0, start);
+    audioLength = audio != nullptr ? juce::jmin (length, audio->getLength() - audioStart) : 0;
+}
+
 double SeparationView::appearanceThreshold (int index, int numStems)
 {
     return static_cast<double> (index + 1) / static_cast<double> (numStems + 1);
@@ -126,6 +133,8 @@ void SeparationView::advance (double seconds)
     if (progress >= 0.0)
         shownProgress += (progress - shownProgress) * (1.0 - std::exp (-seconds / 0.25));
 
+    updateRing (seconds);
+
     // Cada pista aparece al pasar su porcentaje (todas al terminar bien).
     const auto numStems = static_cast<int> (stems.size());
 
@@ -134,6 +143,101 @@ void SeparationView::advance (double seconds)
             appearedAt[static_cast<size_t> (i)] = time;
 
     repaint();
+}
+
+void SeparationView::updateRing (double seconds)
+{
+    // Cada punto del anillo resume unas pocas muestras: 360 puntos recorren
+    // unos 45 ms de la canción, como un osciloscopio puesto en círculo.
+    constexpr int samplesPerPoint = 6;
+    constexpr int window = ringPoints * samplesPerPoint;
+    std::vector<float> raw (ringPoints, 0.0f);
+
+    if (audio != nullptr && audioLength > window)
+    {
+        // La posición avanza en tiempo real y vuelve a empezar al final.
+        const auto elapsed = static_cast<juce::int64> (time * audio->sampleRate);
+        const auto position = audioStart + 1 + elapsed % (audioLength - window - 1);
+        const auto channels = audio->audio.getNumChannels();
+
+        // Nivel de cada punto: un poco de la amplitud (la forma general) y
+        // sobre todo el detalle agudo (diferencia con la muestra anterior):
+        // batería, voces y platillos hacen los picos irregulares; el bajo, no.
+        for (int k = 0; k < ringPoints; ++k)
+        {
+            float amplitude = 0.0f, detail = 0.0f;
+
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const auto* data = audio->audio.getReadPointer (ch, static_cast<int> (position + k * samplesPerPoint));
+
+                for (int i = 0; i < samplesPerPoint; ++i)
+                {
+                    amplitude = juce::jmax (amplitude, std::abs (data[i]));
+                    detail = juce::jmax (detail, std::abs (data[i] - 0.95f * data[i - 1]));
+                }
+            }
+
+            raw[(size_t) k] = 0.15f * amplitude + 1.3f * detail;
+        }
+    }
+    else
+    {
+        // Sin audio: una señal que se parece a la música (picos irregulares
+        // que se desplazan por el círculo).
+        const auto t = time;
+
+        for (int k = 0; k < ringPoints; ++k)
+        {
+            const auto x = static_cast<double> (k);
+            const auto noise = std::fmod (std::abs (std::sin (x * 12.9898 + std::floor (t * 14.0) * 78.233) * 43758.5453), 1.0);
+            const auto swell = 0.5 + 0.5 * std::sin (x * 0.035 - t * 1.4);
+            raw[(size_t) k] = static_cast<float> (swell * swell * (0.35 * noise + 0.65 * std::abs (std::sin (x * 0.41 + t * 9.0))));
+        }
+    }
+
+    // Como en los visualizadores: un círculo limpio con ráfagas de picos. Las
+    // zonas del anillo con más energía que la típica del momento (golpes,
+    // consonantes, platillos) se vuelven irregulares; el resto queda liso.
+    constexpr int neighbourhood = 15;
+    std::vector<float> energy ((size_t) ringPoints, 0.0f);
+
+    for (int k = 0; k < ringPoints; ++k)
+    {
+        float sum = 0.0f;
+        int count = 0;
+
+        for (int j = juce::jmax (0, k - neighbourhood); j <= juce::jmin (ringPoints - 1, k + neighbourhood); ++j, ++count)
+            sum += raw[(size_t) j];
+
+        energy[(size_t) k] = sum / (float) count;
+    }
+
+    auto sorted = energy;
+    std::nth_element (sorted.begin(), sorted.begin() + ringPoints / 2, sorted.end());
+    const auto typical = sorted[(size_t) (ringPoints / 2)];
+    const auto strongest = *std::max_element (energy.begin(), energy.end());
+    const auto framePeak = *std::max_element (raw.begin(), raw.end());
+
+    // Pico reciente (baja poco a poco): una parte más baja de la canción se
+    // ve más tranquila, y el silencio deja el círculo liso.
+    ringPeak = juce::jmax (framePeak, 0.02f, ringPeak * (float) std::exp (-seconds / 1.5));
+    const auto loudness = juce::jlimit (0.0f, 1.0f, framePeak / ringPeak);
+
+    // Subida inmediata y bajada rápida. Los extremos del anillo (abajo, donde
+    // se unen) se atenúan para que no haya un salto.
+    const auto release = (float) std::exp (-seconds / 0.06);
+    const auto calm = finished && succeeded ? 0.35f : 1.0f;
+
+    for (int k = 0; k < ringPoints; ++k)
+    {
+        const auto seam = std::pow (std::sin (juce::MathConstants<float>::pi * ((float) k + 0.5f) / (float) ringPoints), 0.8f);
+        const auto region = strongest > typical ? juce::jlimit (0.0f, 1.0f, (energy[(size_t) k] - typical) / (strongest - typical)) : 0.0f;
+        const auto detail = framePeak > 0.0f ? raw[(size_t) k] / framePeak : 0.0f;
+        const auto target = calm * seam * juce::jmin (1.0f, 1.8f * std::sqrt (loudness) * std::pow (region, 1.1f) * (0.25f + 0.75f * detail));
+        auto& level = ringLevels[(size_t) k];
+        level = juce::jmax (target, level * release);
+    }
 }
 
 void SeparationView::resized()
@@ -161,7 +265,7 @@ void SeparationView::paint (juce::Graphics& g)
 
     const auto centre = bounds.getCentre();
     const auto unit = juce::jmin (bounds.getWidth(), bounds.getHeight());
-    const auto mainRadius = unit * 0.16f;
+    const auto mainRadius = unit * 0.13f;
     const auto orbit = unit * 0.37f;
     const auto stemRadius = unit * 0.085f;
     const auto numStems = static_cast<int> (stems.size());
@@ -196,10 +300,15 @@ void SeparationView::paint (juce::Graphics& g)
 
         drawStemOrb (g, i, position, stemRadius * easeOutBack (appear), juce::jmin (1.0f, appear * 1.5f));
 
+        // El nombre, por fuera (en el lado contrario a la esfera central).
+        auto outward = position - centre;
+        const auto distance = outward.getDistanceFromOrigin();
+        outward = distance > 1.0f ? outward / distance : juce::Point<float> (0.0f, 1.0f);
+
         g.setColour (Palette::text.withAlpha (appear));
         g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
         g.drawText (stems[(size_t) i].name,
-                    juce::Rectangle<float> (120.0f, 18.0f).withCentre (position.translated (0.0f, stemRadius * 1.55f + 10.0f)),
+                    juce::Rectangle<float> (120.0f, 18.0f).withCentre (position + outward * (stemRadius * 1.45f + 12.0f)),
                     juce::Justification::centred, false);
     }
 }
@@ -207,30 +316,9 @@ void SeparationView::paint (juce::Graphics& g)
 void SeparationView::drawMainOrb (juce::Graphics& g, juce::Point<float> centre, float radius) const
 {
     const auto t = (float) time;
-    const auto rotation = t * 0.9f;
 
-    fillGlow (g, centre, radius * 2.1f, sourceColour, 0.28f);
-
-    // Anillo de frecuencias: gira con la esfera y cada barra sube y baja.
-    constexpr int bars = 84;
-    const auto energy = finished && succeeded ? 0.5f : 1.0f;
-
-    for (int k = 0; k < bars; ++k)
-    {
-        const auto theta = twoPi * (float) k / (float) bars;
-        const auto level = std::abs (0.55f * std::sin (3.0f * theta + 2.3f * t)
-                                     + 0.30f * std::sin (7.0f * theta - 3.1f * t + std::sin (t))
-                                     + 0.15f * std::sin (13.0f * theta + 5.7f * t));
-        const auto amount = energy * (0.12f + 0.88f * level);
-        const auto angle = theta + rotation;
-        const auto inner = radius * 1.1f;
-        const auto outer = inner + radius * 0.55f * amount;
-        const juce::Point<float> direction (std::cos (angle), std::sin (angle));
-
-        g.setColour (sourceColour.brighter (0.4f).withAlpha (0.35f + 0.65f * amount));
-        g.drawLine (juce::Line<float> (centre + direction * inner, centre + direction * outer), 2.4f);
-    }
-
+    fillGlow (g, centre, radius * 2.3f, sourceColour, 0.22f);
+    drawFrequencyRing (g, centre, radius);
     fillSphere (g, centre, radius, sourceColour, 1.0f);
 
     // Meridianos: elipses que se estrechan y ensanchan dan la sensación de giro.
@@ -281,6 +369,70 @@ void SeparationView::drawMainOrb (juce::Graphics& g, juce::Point<float> centre, 
     g.drawText (text, textArea.translated (1.5f, 2.0f), juce::Justification::centred, false);
     g.setColour (juce::Colours::white);
     g.drawText (text, textArea, juce::Justification::centred, false);
+}
+
+void SeparationView::drawFrequencyRing (juce::Graphics& g, juce::Point<float> centre, float radius) const
+{
+    // Una línea cerrada: el círculo base más el nivel de cada punto hacia fuera.
+    // Empieza y termina abajo (donde los niveles se atenúan) y gira despacio.
+    const auto base = radius * 1.32f;
+    const auto reach = radius * 0.72f;
+    const auto rotation = juce::MathConstants<float>::halfPi + (float) time * 0.25f;
+
+    juce::Path ring;
+    std::vector<juce::Point<float>> points ((size_t) ringPoints);
+
+    for (int k = 0; k < ringPoints; ++k)
+    {
+        const auto angle = rotation + twoPi * (float) k / (float) ringPoints;
+        const auto r = base + reach * ringLevels[(size_t) k];
+        points[(size_t) k] = { centre.x + r * std::cos (angle), centre.y + r * std::sin (angle) };
+
+        if (k == 0)
+            ring.startNewSubPath (points[(size_t) k]);
+        else
+            ring.lineTo (points[(size_t) k]);
+    }
+
+    ring.closeSubPath();
+
+    // Resplandor del color de la pista y, encima, la línea blanca fina.
+    g.setColour (sourceColour.withAlpha (0.16f));
+    g.strokePath (ring, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (sourceColour.brighter (0.5f).withAlpha (0.45f));
+    g.strokePath (ring, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (juce::Colours::white.withAlpha (0.95f));
+    g.strokePath (ring, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // Puntos brillantes en los picos: máximos locales altos; el mayor, más grande.
+    const auto dotColour = sourceColour.brighter (0.9f);
+    int highest = -1;
+
+    for (int k = 0; k < ringPoints; ++k)
+    {
+        const auto level = ringLevels[(size_t) k];
+
+        if (highest < 0 || level > ringLevels[(size_t) highest])
+            highest = k;
+
+        const auto previous = ringLevels[(size_t) ((k + ringPoints - 3) % ringPoints)];
+        const auto next = ringLevels[(size_t) ((k + 3) % ringPoints)];
+
+        if (level < 0.22f || level < previous || level < next || k % 2 != 0)
+            continue;
+
+        fillGlow (g, points[(size_t) k], 4.0f + 8.0f * level, dotColour, 0.55f * level);
+        g.setColour (dotColour.withAlpha (0.6f + 0.4f * level));
+        g.fillEllipse (juce::Rectangle<float> (2.0f + 2.5f * level, 2.0f + 2.5f * level).withCentre (points[(size_t) k]));
+    }
+
+    if (highest >= 0 && ringLevels[(size_t) highest] > 0.2f)
+    {
+        const auto& peak = points[(size_t) highest];
+        fillGlow (g, peak, 18.0f, dotColour, 0.75f);
+        g.setColour (juce::Colours::white);
+        g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (peak));
+    }
 }
 
 void SeparationView::drawBeam (juce::Graphics& g, juce::Point<float> from, juce::Point<float> to,
