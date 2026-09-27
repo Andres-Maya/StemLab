@@ -121,6 +121,52 @@ std::pair<juce::int64, juce::int64> freeGapAt (const std::vector<AudioClip>& cli
     return { start, end };
 }
 
+std::vector<AudioClip> moveWithoutOverlap (std::vector<AudioClip> clips, juce::uint32 clipId, juce::int64 newStart)
+{
+    auto* moving = find (clips, clipId);
+
+    if (moving == nullptr)
+        return clips;
+
+    const auto length = moving->length;
+    const auto start = juce::jmax<juce::int64> (0, newStart);
+
+    std::vector<AudioClip*> others;
+
+    for (auto& clip : clips)
+        if (clip.id != clipId && clip.length > 0)
+            others.push_back (&clip);
+
+    std::sort (others.begin(), others.end(), [] (const AudioClip* a, const AudioClip* b) { return a->timelineStart < b->timelineStart; });
+
+    // Hueco que le toca: detrás de los clips cuyo centro ya ha pasado (se
+    // comparan los dobles para no perder la media muestra).
+    const auto centreTimesTwo = 2 * start + length;
+    size_t index = 0;
+    juce::int64 lowest = 0;
+
+    while (index < others.size() && 2 * others[index]->timelineStart + others[index]->length < centreTimesTwo)
+        lowest = juce::jmax (lowest, others[index++]->getEnd());
+
+    const auto highest = index < others.size() ? others[index]->timelineStart : std::numeric_limits<juce::int64>::max();
+
+    if (highest - lowest >= length)
+    {
+        // Cabe: se coloca donde se soltó, sin pasar de los vecinos del hueco.
+        moving->timelineStart = juce::jlimit (lowest, highest - length, start);
+        return clips;
+    }
+
+    // No cabe: se abre espacio desplazando todos los de delante a la vez.
+    moving->timelineStart = juce::jmax (lowest, start);
+    const auto shift = moving->getEnd() - highest;
+
+    for (auto i = index; i < others.size(); ++i)
+        others[i]->timelineStart += shift;
+
+    return clips;
+}
+
 std::pair<juce::int64, juce::int64> freeRangeAround (const std::vector<AudioClip>& clips, const AudioClip& clip)
 {
     juce::int64 lowest = 0;

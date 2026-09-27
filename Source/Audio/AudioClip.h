@@ -85,8 +85,17 @@ namespace ClipEditing
         del siguiente clip), o hasta el infinito si no hay ninguno detrás. */
     std::pair<juce::int64, juce::int64> freeGapAt (const std::vector<AudioClip>& clips, juce::int64 position);
 
-    /** Límites para mover o recortar el clip sin pisar a sus vecinos: el fin
-        del anterior y el principio del siguiente. */
+    /** Mueve el clip (arrastrarlo) sin que se solape con los demás:
+          - Mientras su centro no pase del centro de un vecino, se detiene al
+            tocarlo.
+          - Si lo pasa, salta al otro lado del vecino, al hueco siguiente.
+          - Si en ese hueco no cabe, se abre espacio: los clips que quedan por
+            delante se desplazan todos juntos lo justo (mantienen sus distancias).
+        Devuelve la lista con los cambios; conserva el orden de la lista. */
+    std::vector<AudioClip> moveWithoutOverlap (std::vector<AudioClip> clips, juce::uint32 clipId, juce::int64 newStart);
+
+    /** Límites para recortar el clip sin pisar a sus vecinos: el fin del
+        anterior y el principio del siguiente. */
     std::pair<juce::int64, juce::int64> freeRangeAround (const std::vector<AudioClip>& clips, const AudioClip& clip);
 
     /** Recorta un clip nuevo (una grabación) al hueco libre donde empieza entre
