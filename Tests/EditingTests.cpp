@@ -3,6 +3,7 @@
 
 #include "Audio/AudioEngine.h"
 #include "Project/ProjectManager.h"
+#include "UI/StemLabLookAndFeel.h"
 #include "UI/WaveformView.h"
 #include "Utils/Strings.h"
 
@@ -345,6 +346,68 @@ namespace
         auto trimmed = pair.getClips();
         CHECK (ClipEditing::find (trimmed, a.id)->getEnd() == 48000 * 4, "recortar: el borde se detiene al principio del siguiente");
     }
+
+    void testDragAnimation()
+    {
+        section ("Animación al arrastrar: se levanta, pasa por encima y baja a su sitio");
+
+        StemLabLookAndFeel lookAndFeel;
+        juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+
+        {
+            juce::AudioFormatManager formats;
+            juce::AudioThumbnailCache cache (4);
+            AudioTrack track ("Animación"_u8);
+            auto tone = std::make_shared<ClipSource>();
+            tone->sampleRate = 48000.0;
+            tone->audio = makeSine (2, 48000 * 2, 3.0, 48000.0, 0.6f);
+            const auto a = makeClip (tone, 0);                    // [0, 2) s
+            const auto b = makeClip (tone, 48000 * 4);            // [4, 6) s
+            track.setClips ({ a, b });
+
+            WaveformView lane (track, formats, cache);
+            lane.setWaveColour (juce::Colour (0xff4fc3f7));
+            lane.setBounds (0, 0, 1000, 83);
+            lane.setVisibleRange (0.0, 10.0);
+            const auto modelStart = [&track] (juce::uint32 id) { auto list = track.getClips(); return ClipEditing::find (list, id)->timelineStart; };
+
+            // Agarrar B y llevarlo encima de A (sin soltar).
+            const juce::Point<float> grab (500.0f, 40.0f), overA (150.0f, 40.0f);
+            lane.mouseDown (mouseEventAt (lane, grab, grab, false));
+            lane.mouseDrag (mouseEventAt (lane, overA, grab, true));
+            CHECK (near (lane.getDrawnStart (b.id), 0.5 * 48000, 1.0), "B se dibuja bajo el ratón, encima de A (0,5 s)");
+            CHECK (modelStart (b.id) == 48000 * 2, "aunque la pista ya lo tiene en su sitio real (2 s, detrás de A)");
+
+            runLoopUntil ([&] { return lane.getLiftAmount() > 0.99f; }, 1000);
+            CHECK (lane.getLiftAmount() > 0.99f, "se levanta mientras se arrastra (" << lane.getLiftAmount() << ")");
+            saveSnapshot (lane.createComponentSnapshot (lane.getLocalBounds()), "arrastre-encima.png");
+
+            // Pasar del centro de A: A se aparta deslizándose (no salta).
+            const juce::Point<float> pastA (40.0f, 40.0f);
+            lane.mouseDrag (mouseEventAt (lane, pastA, grab, true));
+            CHECK (modelStart (a.id) == 48000 * 2 && lane.getDrawnStart (a.id) < 48000.0,
+                   "A ya está en 2 s en la pista, pero se dibuja deslizándose desde 0");
+            runLoopUntil ([&] { return juce::exactlyEqual (lane.getDrawnStart (a.id), 96000.0); }, 1000);
+            CHECK (juce::exactlyEqual (lane.getDrawnStart (a.id), 96000.0), "A termina de deslizarse hasta su sitio");
+            saveSnapshot (lane.createComponentSnapshot (lane.getLocalBounds()), "arrastre-apartando.png");
+
+            // Soltar: B baja desde el ratón hasta su sitio y deja de estar levantado.
+            lane.mouseUp (mouseEventAt (lane, pastA, grab, true));
+            CHECK (lane.getLiftAmount() > 0.5f, "justo al soltar sigue levantado: baja con animación");
+            runLoopUntil ([&] { return juce::exactlyEqual (lane.getLiftAmount(), 0.0f); }, 1000);
+            CHECK (juce::exactlyEqual (lane.getLiftAmount(), 0.0f) && juce::exactlyEqual (lane.getDrawnStart (b.id), 0.0),
+                   "al terminar queda apoyado y dibujado en su posición real (0 s)");
+            saveSnapshot (lane.createComponentSnapshot (lane.getLocalBounds()), "arrastre-soltado.png");
+
+            // Un clic sin arrastrar no levanta nada.
+            const juce::Point<float> click (100.0f, 40.0f);
+            lane.mouseDown (mouseEventAt (lane, click, click, false));
+            lane.mouseUp (mouseEventAt (lane, click, click, false));
+            CHECK (juce::exactlyEqual (lane.getLiftAmount(), 0.0f), "un clic sin arrastrar no levanta el fragmento");
+        }
+
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+    }
 }
 
 void runEditingTests()
@@ -353,5 +416,6 @@ void runEditingTests()
     testFreeSpaceHelpers();
     testRecordAfterExistingAudio();
     testClickOnClipMovesPlayhead();
+    testDragAnimation();
 }
 }
