@@ -4,6 +4,11 @@
 
 namespace stemlab
 {
+namespace
+{
+    constexpr int reorderThreshold = 5;     // píxeles antes de empezar a mover la pista
+}
+
 TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour trackColour,
                       juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache)
     : track (std::move (audioTrack)),
@@ -19,8 +24,26 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     nameLabel.setText (track->getName(), juce::dontSendNotification);
     nameLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
     nameLabel.setEditable (false, true);
-    nameLabel.setTooltip ("Doble clic para renombrar");
-    nameLabel.onTextChange = [this] { track->setName (nameLabel.getText()); };
+    nameLabel.setTooltip ("Doble clic (o F2) para cambiar el nombre. Arrastra para mover la pista.");
+    nameLabel.onTextChange = [this]
+    {
+        const auto newName = nameLabel.getText().trim();
+
+        if (newName.isEmpty())
+        {
+            nameLabel.setText (track->getName(), juce::dontSendNotification);
+            return;
+        }
+
+        track->setName (newName);
+
+        if (onRenamed != nullptr)
+            onRenamed (*this);
+    };
+
+    // La fila recibe también los clics sobre el nombre: así se puede arrastrar
+    // la pista agarrándola por el nombre (el doble clic sigue editándolo).
+    nameLabel.addMouseListener (this, false);
     addAndMakeVisible (nameLabel);
 
     muteButton.setColour (juce::TextButton::buttonOnColourId, Palette::mute);
@@ -59,74 +82,13 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     };
     addAndMakeVisible (waveform);
 
-    addBelowButton.setTooltip ("Añadir una pista debajo"_u8);
-    addBelowButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
-    addBelowButton.onClick = [this] { if (onAddBelow != nullptr) onAddBelow (*this); };
-    addBelowButton.colour = colour;
-    addChildComponent (addBelowButton);
-
-    addMouseListener (&hoverWatcher, true);
     track->getMute().addListener (this);
 }
 
 TrackView::~TrackView()
 {
-    removeMouseListener (&hoverWatcher);
+    nameLabel.removeMouseListener (this);
     track->getMute().removeListener (this);
-}
-
-void TrackView::setIsLast (bool shouldBeLast)
-{
-    isLast = shouldBeLast;
-    updateAddButton();
-}
-
-void TrackView::updateAddButton()
-{
-    addBelowButton.setVisible (isLast || isMouseOver (true));
-}
-
-//==============================================================================
-juce::Point<float> TrackView::AddBelowButton::getCircleCentre() const
-{
-    // Pegado al borde inferior: el círculo se apoya en la línea del borde.
-    return { 6.0f + radius, static_cast<float> (getHeight()) - 1.0f - radius };
-}
-
-bool TrackView::AddBelowButton::hitTest (int x, int y)
-{
-    // Solo el círculo responde al ratón; el resto de la franja sigue siendo
-    // la cabecera de la pista (clic para seleccionar).
-    return getCircleCentre().getDistanceFrom ({ static_cast<float> (x), static_cast<float> (y) }) <= radius + 3.0f;
-}
-
-void TrackView::AddBelowButton::paint (juce::Graphics& g)
-{
-    const auto centre = getCircleCentre();
-    const auto lineY = static_cast<float> (getHeight()) - 2.0f;
-
-    // Del color de la pista, algo apagado; al pasar el ratón, a pleno color.
-    const auto lineColour = colour.withAlpha (hovered ? 1.0f : 0.65f);
-
-    // Línea sobre el borde inferior, solo en la cabecera (hasta donde empiezan
-    // los clips), saliendo del propio círculo.
-    g.setColour (lineColour);
-    g.fillRect (centre.x, lineY, static_cast<float> (getWidth()) - centre.x, 2.0f);
-
-    g.setColour (Palette::panel.interpolatedWith (colour, hovered ? 0.35f : 0.15f));
-    g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
-    g.setColour (lineColour);
-    g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.5f);
-
-    g.setColour (hovered ? Palette::text : Palette::text.withAlpha (0.8f));
-    g.fillRoundedRectangle (centre.x - 4.0f, centre.y - 0.75f, 8.0f, 1.5f, 0.75f);
-    g.fillRoundedRectangle (centre.x - 0.75f, centre.y - 4.0f, 1.5f, 8.0f, 0.75f);
-}
-
-void TrackView::AddBelowButton::mouseUp (const juce::MouseEvent& event)
-{
-    if (hitTest (event.x, event.y) && onClick != nullptr)
-        onClick();
 }
 
 void TrackView::setSelected (bool shouldBeSelected)
@@ -140,8 +102,16 @@ void TrackView::setSelected (bool shouldBeSelected)
 
 void TrackView::trackChanged()
 {
+    if (! nameLabel.isBeingEdited())
+        nameLabel.setText (track->getName(), juce::dontSendNotification);
+
     waveform.clipsChanged();
     repaint();      // la franja se pone roja mientras se graba en esta pista
+}
+
+void TrackView::startRename()
+{
+    nameLabel.showEditor();
 }
 
 void TrackView::parameterChanged (Parameter&)
@@ -163,13 +133,19 @@ void TrackView::paint (juce::Graphics& g)
     g.setColour (Palette::outline);
     g.drawHorizontalLine (getHeight() - 1, 0.0f, static_cast<float> (getWidth()));
     g.drawVerticalLine (headerWidth - 1, 0.0f, static_cast<float> (getHeight()));
+
+    // Mientras se arrastra, un borde del color de la pista la resalta.
+    if (reordering)
+    {
+        g.setColour (colour);
+        g.drawRect (getLocalBounds(), 2);
+    }
 }
 
 void TrackView::resized()
 {
     auto header = getLocalBounds().removeFromLeft (headerWidth).reduced (10, 6).withTrimmedLeft (4);
     waveform.setBounds (getLocalBounds().withTrimmedLeft (headerWidth).withTrimmedBottom (1));
-    addBelowButton.setBounds (0, getHeight() - AddBelowButton::height, headerWidth - 1, AddBelowButton::height);
 
     meter.setBounds (header.removeFromRight (8));
     header.removeFromRight (6);
@@ -190,9 +166,53 @@ void TrackView::resized()
     volumeSlider.setBounds (bottom.withSizeKeepingCentre (bottom.getWidth(), 22));
 }
 
-void TrackView::mouseDown (const juce::MouseEvent&)
+//==============================================================================
+void TrackView::mouseDown (const juce::MouseEvent& event)
 {
     if (onSelect != nullptr)
         onSelect (*this);
+
+    if (event.mods.isPopupMenu())
+    {
+        if (onHeaderMenu != nullptr)
+            onHeaderMenu (*this);
+
+        return;
+    }
+
+    grabY = event.getEventRelativeTo (this).y;
+    reordering = false;
+}
+
+void TrackView::mouseDrag (const juce::MouseEvent& event)
+{
+    if (event.mods.isPopupMenu() || nameLabel.isBeingEdited() || getParentComponent() == nullptr)
+        return;
+
+    if (! reordering && std::abs (event.getDistanceFromDragStartY()) < reorderThreshold)
+        return;
+
+    if (! reordering)
+    {
+        reordering = true;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        repaint();
+    }
+
+    if (onReorderDrag != nullptr)
+        onReorderDrag (*this, event.getEventRelativeTo (getParentComponent()).y, grabY);
+}
+
+void TrackView::mouseUp (const juce::MouseEvent&)
+{
+    if (! reordering)
+        return;
+
+    reordering = false;
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+    repaint();
+
+    if (onReorderEnd != nullptr)
+        onReorderEnd (*this);
 }
 }
