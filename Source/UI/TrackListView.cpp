@@ -17,6 +17,8 @@ namespace
 
     enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId, copyId, cutId, pasteBelowId,
                         leaveFolderId, intoFolderBaseId = 100 };
+
+    enum FolderMenuIds { toggleFolderId = 1, toggleWavesId, deleteFolderId };
 }
 
 void TrackListView::Content::paint (juce::Graphics& g)
@@ -221,9 +223,19 @@ void TrackListView::FolderHeader::resized()
 
 void TrackListView::FolderHeader::mouseUp (const juce::MouseEvent& event)
 {
-    // Clic en la cabecera: desplegar o plegar la carpeta.
-    if (! event.mods.isPopupMenu() && event.mouseWasClicked() && onToggle != nullptr)
+    // Clic en la cabecera: desplegar o plegar la carpeta. Clic derecho: su menú.
+    if (! event.mouseWasClicked())
+        return;
+
+    if (event.mods.isPopupMenu())
+    {
+        if (onMenu != nullptr)
+            onMenu();
+    }
+    else if (onToggle != nullptr)
+    {
         onToggle();
+    }
 }
 
 //==============================================================================
@@ -392,6 +404,7 @@ void TrackListView::setFolders (std::vector<FolderInfo> newFolders)
             const auto id = folder.id;
             header->onToggle = [this, id] { if (onToggleFolder != nullptr) onToggleFolder (id); };
             header->onToggleWaves = [this, id] { if (onToggleFolderWindow != nullptr) onToggleFolderWindow (id); };
+            header->onMenu = [this, id] { showFolderMenu (id); };
             content.addChildComponent (*header);
         }
     }
@@ -575,6 +588,35 @@ void TrackListView::moveTrack (int fromIndex, int toIndex)
 
     if (onTracksReordered != nullptr)
         onTracksReordered (track, fromIndex, toIndex);
+}
+
+void TrackListView::showFolderMenu (const juce::String& folderId)
+{
+    const auto* folder = findFolder (folderId);
+
+    if (folder == nullptr)
+        return;
+
+    juce::PopupMenu menu;
+    menu.addItem (toggleFolderId, folder->expanded ? "Plegar carpeta" : "Desplegar carpeta");
+    menu.addItem (toggleWavesId, folder->wavesOpen ? "Cerrar ondas" : "Abrir ondas", folder->canShowWaves);
+    menu.addSeparator();
+    menu.addItem (deleteFolderId, "Eliminar carpeta...");
+
+    menu.showMenuAsync (juce::PopupMenu::Options(),
+                        [safe = juce::Component::SafePointer<TrackListView> (this), folderId] (int result)
+    {
+        if (safe == nullptr || safe->findFolder (folderId) == nullptr)
+            return;
+
+        switch (result)
+        {
+            case toggleFolderId:    if (safe->onToggleFolder != nullptr) safe->onToggleFolder (folderId); break;
+            case toggleWavesId:     if (safe->onToggleFolderWindow != nullptr) safe->onToggleFolderWindow (folderId); break;
+            case deleteFolderId:    if (safe->onDeleteFolderRequested != nullptr) safe->onDeleteFolderRequested (folderId); break;
+            default:                break;
+        }
+    });
 }
 
 void TrackListView::showTrackMenu (TrackView& view)

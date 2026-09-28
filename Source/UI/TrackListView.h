@@ -90,6 +90,7 @@ public:
 
     std::function<void (const juce::String& folderId)> onToggleFolder;         // desplegar / plegar
     std::function<void (const juce::String& folderId)> onToggleFolderWindow;   // abrir / cerrar las ondas
+    std::function<void (const juce::String& folderId)> onDeleteFolderRequested; // menú de la cabecera (pide confirmación)
 
     /** Una pista se soltó (arrastre o menú): carpeta destino ("" = ninguna) y
         posición en el mezclador. Quien la recibe la mueve (y lo anota para deshacer). */
@@ -151,7 +152,8 @@ private:
         juce::Colour colour { Palette::accent };   // el de la pista en la que se graba
     };
 
-    /** Cabecera de una carpeta: flecha, icono, nombre y el botón "Ondas". */
+    /** Cabecera de una carpeta: flecha, icono, nombre y el botón "Ondas".
+        Clic: desplegar o plegar. Clic derecho: su menú. */
     struct FolderHeader final : public juce::Component
     {
         static constexpr int height = 32;
@@ -167,6 +169,7 @@ private:
         juce::TextButton wavesButton;
         std::function<void()> onToggle;
         std::function<void()> onToggleWaves;
+        std::function<void()> onMenu;
     };
 
     /** Lo que se ve en la lista, en orden: cabeceras de carpeta y pistas. */
@@ -203,6 +206,7 @@ private:
     static int heightOf (const Entry& entry);
     int mixerIndexAtEndOf (const juce::String& folderId, const std::shared_ptr<AudioTrack>& excluding) const;
     void showTrackMenu (TrackView& view);
+    void showFolderMenu (const juce::String& folderId);
     void reorderDrag (TrackView& view, int parentY, int grabY);
     void reorderEnd (TrackView& view);
     void moveTrack (int fromIndex, int toIndex);
