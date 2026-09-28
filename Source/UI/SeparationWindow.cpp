@@ -50,7 +50,9 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
     : sourceName (std::move (source)),
       sourceColour (colour),
       stems (std::move (stemList)),
-      appearedAt (stems.size(), -1.0)
+      appearedAt (stems.size(), -1.0),
+      present (stems.size(), true),
+      presence (stems.size(), 1.0f)
 {
     setOpaque (true);
 
@@ -78,7 +80,13 @@ double SeparationView::appearanceThreshold (int index, int numStems)
 
 int SeparationView::getNumVisibleStems() const noexcept
 {
-    return static_cast<int> (std::count_if (appearedAt.begin(), appearedAt.end(), [] (double t) { return t >= 0.0; }));
+    int visible = 0;
+
+    for (size_t i = 0; i < stems.size(); ++i)
+        if (appearedAt[i] >= 0.0 && present[i])
+            ++visible;
+
+    return visible;
 }
 
 void SeparationView::setFinished (bool didSucceed)
@@ -129,6 +137,16 @@ void SeparationView::advance (double seconds)
     for (int i = 0; i < numStems; ++i)
         if (appearedAt[static_cast<size_t> (i)] < 0.0 && progress >= appearanceThreshold (i, numStems))
             appearedAt[static_cast<size_t> (i)] = time;
+
+    // Cada onda sigue a su pista: se desvanece si se elimina y vuelve si se deshace.
+    const auto fade = static_cast<float> (1.0 - std::exp (-seconds / 0.15));
+
+    for (size_t i = 0; i < stems.size(); ++i)
+    {
+        present[i] = isStemPresent == nullptr || isStemPresent (static_cast<int> (i));
+        const auto target = present[i] ? 1.0f : 0.0f;
+        presence[i] = std::abs (target - presence[i]) < 0.01f ? target : presence[i] + (target - presence[i]) * fade;
+    }
 
     repaint();
 }
@@ -246,7 +264,8 @@ void SeparationView::paint (juce::Graphics& g)
     // Título y estado.
     g.setColour (Palette::text);
     g.setFont (juce::FontOptions (19.0f, juce::Font::bold));
-    g.drawText ("Separando \"" + sourceName + "\"", header.removeFromTop (26.0f), juce::Justification::centred, true);
+    g.drawText ((finished && succeeded ? "Pistas de \"" : "Separando \"") + sourceName + "\"",
+                header.removeFromTop (26.0f), juce::Justification::centred, true);
     g.setColour (Palette::textDim);
     g.setFont (juce::FontOptions (13.5f));
     g.drawText (status, header, juce::Justification::centred, true);
@@ -265,7 +284,8 @@ void SeparationView::paint (juce::Graphics& g)
     for (int i = 0; i < numStems; ++i)
     {
         const auto since = appearedAt[static_cast<size_t> (i)];
-        const auto appear = since < 0.0 ? 0.0f : (float) juce::jlimit (0.0, 1.0, (time - since) / appearSeconds);
+        const auto appear = since < 0.0 ? 0.0f : (float) juce::jlimit (0.0, 1.0, (time - since) / appearSeconds)
+                                                 * presence[static_cast<size_t> (i)];
         const auto angle = -juce::MathConstants<float>::halfPi + twoPi * (float) i / (float) juce::jmax (1, numStems)
                          + (float) time * 0.12f;
         const juce::Point<float> slot (centre.x + orbit * std::cos (angle), centre.y + orbit * std::sin (angle));
@@ -279,7 +299,7 @@ void SeparationView::paint (juce::Graphics& g)
         const auto offset = position - centre;
         const auto distance = offset.getDistanceFromOrigin();
 
-        // Del anillo al borde de la pista: no cruza ni el porcentaje ni su nombre.
+        // Del anillo al borde de la onda: no cruza el porcentaje.
         if (appear > 0.0f && distance > mainRadius * 1.32f + stemRadius)
             drawBeam (g, centre + offset * (mainRadius * 1.32f / distance),
                       position - offset * (stemRadius * 0.95f / distance), stems[(size_t) i].colour, appear, i);
@@ -295,14 +315,6 @@ void SeparationView::paint (juce::Graphics& g)
             continue;
 
         drawStemOrb (g, i, position, stemRadius * easeOutBack (appear), juce::jmin (1.0f, appear * 1.5f));
-
-        // El nombre, dentro de su animación, con sombra para que se lea encima.
-        const auto nameArea = juce::Rectangle<float> (stemRadius * 2.2f, 20.0f).withCentre (position);
-        g.setFont (juce::FontOptions (juce::jlimit (11.0f, 15.0f, stemRadius * 0.34f), juce::Font::bold));
-        g.setColour (juce::Colours::black.withAlpha (0.6f * appear));
-        g.drawText (stems[(size_t) i].name, nameArea.translated (1.0f, 1.5f), juce::Justification::centred, false);
-        g.setColour (juce::Colours::white.withAlpha (appear));
-        g.drawText (stems[(size_t) i].name, nameArea, juce::Justification::centred, false);
     }
 }
 
@@ -543,5 +555,16 @@ void SeparationWindow::present()
 {
     setVisible (true);
     toFront (true);
+
+    if (onVisibilityChanged != nullptr)
+        onVisibilityChanged();
+}
+
+void SeparationWindow::closeButtonPressed()
+{
+    setVisible (false);
+
+    if (onVisibilityChanged != nullptr)
+        onVisibilityChanged();
 }
 }

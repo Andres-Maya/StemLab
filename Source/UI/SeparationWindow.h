@@ -18,11 +18,13 @@ namespace stemlab
         un círculo y se deforma con picos, con puntos brillantes en los más
         altos. Dibuja la propia canción: recorre su audio en tiempo real y lo
         pone en círculo (sin audio usa una señal sintética).
-      - Cada cierto porcentaje sale del centro una de las pistas que se van a
-        generar (Voz, Batería...): una animación de su color (ondas, órbita,
-        arcos, oscilador, barras, pétalos) con su nombre dentro, que se coloca
-        alrededor. Con 4 pistas aparecen al 20, 40, 60 y 80 %.
+      - Cada cierto porcentaje sale del centro la onda de una de las pistas que
+        se van a generar (Voz, Batería...): una animación de su color (ondas,
+        órbita, arcos, oscilador, barras, pétalos) que se coloca alrededor. Con
+        4 pistas aparecen al 20, 40, 60 y 80 %.
       - Al terminar aparecen todas y se muestra "Separación completada".
+      - Después, cada onda se mantiene mientras exista su pista
+        (isStemPresent): si se elimina se desvanece, y si se deshace vuelve.
 
     El progreso y el estado se leen con getProgress / getStatus (60 veces por
     segundo mientras se ve). advance() hace avanzar la animación: el timer lo
@@ -43,6 +45,9 @@ public:
     std::function<double()> getProgress;            // 0..1, negativo = todavía sin porcentaje
     std::function<juce::String()> getStatus;
     std::function<void()> onCancel;
+
+    /** ¿Existe la pista del stem index? (sin asignar: todas existen). */
+    std::function<bool (int stemIndex)> isStemPresent;
 
     /** Audio de la canción que se separa, para el anillo de frecuencias: el
         tramo [start, start + length) de source (el fragmento de la pista). */
@@ -79,6 +84,8 @@ private:
     juce::Colour sourceColour;
     std::vector<Stem> stems;
     std::vector<double> appearedAt;                 // segundo de la animación en que apareció (-1: aún no)
+    std::vector<bool> present;                      // su pista existe
+    std::vector<float> presence;                    // 0..1: se desvanece al eliminar la pista
 
     double time = 0.0;
     double progress = -1.0;
@@ -99,9 +106,9 @@ private:
 };
 
 /**
-    Ventana propia de la separación. Cerrarla solo la oculta: la separación
-    sigue y se puede volver a abrir (barra de estado > Ver progreso, o IA >
-    Mostrar progreso de la separación).
+    Ventana de ondas de una carpeta de separación. Cerrarla solo la oculta: se
+    vuelve a abrir con el botón "Ondas" de la carpeta (y, mientras separa, con
+    Ver progreso de la barra de estado o IA > Mostrar progreso).
 */
 class SeparationWindow final : public juce::DocumentWindow
 {
@@ -113,7 +120,10 @@ public:
     /** Mostrar y traer al frente. */
     void present();
 
-    void closeButtonPressed() override      { setVisible (false); }
+    void closeButtonPressed() override;
+
+    /** Al mostrarse u ocultarse (para el botón "Ondas" de la carpeta). */
+    std::function<void()> onVisibilityChanged;
 
 private:
     SeparationView* view = nullptr;         // propiedad de la ventana (setContentOwned)
