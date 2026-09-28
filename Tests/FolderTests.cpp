@@ -11,7 +11,8 @@
 #include "Utils/Strings.h"
 
 // Carpetas de separación: meter y sacar pistas, guardarlas, verlas en la lista
-// (desplegar, plegar, arrastrar) y su ventana de ondas.
+// (desplegar, plegar, arrastrar), su ventana de ondas y cómo queda la carpeta
+// del proyecto en disco al guardar.
 
 namespace stemlab::test
 {
@@ -348,6 +349,107 @@ namespace
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
+
+    void testProjectFolderOnDisk()
+    {
+        section ("Carpeta del proyecto: guardar refleja las pistas en disco");
+
+        AudioEngine engine;
+        ProjectManager projects (engine);
+        const auto& tracks = engine.getMixer().getTracks();
+
+        const auto wav = writeConstantWav (outputFolder().getChildFile ("disco-cancion.wav"), 44100.0, 1.0, 0.2f);
+        auto done = false;
+        projects.importAudio ({ wav }, [&] (juce::Result) { done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        const auto song = tracks.front();
+        const auto id = simulateSeparation (projects, "carpeta-disco");
+
+        const auto root = outputFolder().getChildFile ("ProyectoDisco");
+        root.deleteRecursively();
+        CHECK (projects.saveAs (root).wasOk() && ! projects.hasUnsavedChanges(), "Guardar como");
+
+        const auto stemsFolder = root.getChildFile ("stems/Mi canción"_u8);
+        const auto vocals = stemsFolder.getChildFile (id + "-vocals.wav");
+        CHECK (vocals.existsAsFile() && stemsFolder.getNumberOfChildFiles (juce::File::findFiles) == 4
+                   && root.getChildFile ("audio/disco-cancion.wav").existsAsFile(),
+               "los stems quedan en stems/<carpeta>/ y la canción en audio/");
+        CHECK (root.getChildFile ("ProyectoDisco.stemlab").loadFileAsString().contains ("stems/Mi canción/"_u8),
+               "el .stemlab apunta a esa carpeta");
+
+        // Eliminar una pista: su audio sale del proyecto al guardar.
+        const auto songFile = root.getChildFile ("audio/disco-cancion.wav");
+        projects.removeTrack (*song);
+        CHECK (songFile.existsAsFile(), "sin guardar, el archivo sigue en disco");
+        projects.save();
+        CHECK (! songFile.exists() && ! projects.hasUnsavedChanges(), "al guardar, el audio de la pista eliminada desaparece");
+
+        projects.undo();
+        CHECK (song->hasClips() && projects.hasUnsavedChanges(), "Ctrl+Z la recupera (con su audio en memoria)");
+        projects.save();
+        CHECK (songFile.existsAsFile() && song->getSourceFile() == songFile && ! projects.hasUnsavedChanges(),
+               "y al volver a guardar, su archivo vuelve a audio/");
+
+        // Sacar una pista de la carpeta: su archivo pasa a audio/; meterla, vuelve.
+        const auto voice = tracks[1];
+        projects.moveTrackToFolder (voice, {}, (int) tracks.size() - 1);
+        projects.save();
+        const auto vocalsOutside = root.getChildFile ("audio/" + vocals.getFileName());
+        CHECK (! vocals.exists() && vocalsOutside.existsAsFile() && voice->getSourceFile() == vocalsOutside,
+               "sacar la pista de la carpeta mueve su archivo a audio/");
+
+        projects.undo();
+        projects.save();
+        CHECK (vocals.existsAsFile() && ! vocalsOutside.exists() && voice->getSourceFile() == vocals,
+               "volver a meterla lo devuelve a stems/<carpeta>/");
+
+        // Meter otra pista en la carpeta: su archivo va con los stems.
+        projects.moveTrackToFolder (song, id, 1);
+        projects.save();
+        CHECK (stemsFolder.getChildFile ("disco-cancion.wav").existsAsFile() && ! songFile.exists(),
+               "meter una pista en la carpeta mueve su archivo a stems/<carpeta>/");
+        projects.undo();
+        projects.save();
+        CHECK (songFile.existsAsFile() && ! stemsFolder.getChildFile ("disco-cancion.wav").exists(),
+               "y sacarla lo devuelve a audio/");
+
+        // Audio que está fuera del proyecto: se copia dentro.
+        const auto outside = writeConstantWav (outputFolder().getChildFile ("disco-fuera.wav"), 44100.0, 1.0, 0.3f);
+        done = false;
+        projects.addTracks ({ { "Fuera", outside, 0.0, false } }, [&] (juce::Result) { done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        projects.save();
+        CHECK (root.getChildFile ("audio/disco-fuera.wav").existsAsFile() && outside.existsAsFile()
+                   && tracks.back()->getSourceFile().isAChildOf (root),
+               "el audio de fuera del proyecto se copia a audio/ (el original no se toca)");
+
+        // Una grabación en curso no se toca aunque aún no esté en ninguna pista.
+        const auto recording = writeConstantWav (projects.createRecordingFile(), 44100.0, 0.5, 0.1f);
+        projects.save();
+        CHECK (recording.existsAsFile(), "guardar no quita el archivo de una grabación en curso");
+
+        // Eliminar la carpeta entera (todas sus pistas): se borra su carpeta en disco.
+        for (const auto& stem : projects.getStemTracks (id))
+            projects.removeTrack (*stem);
+
+        projects.save();
+        CHECK (! stemsFolder.exists() && root.getChildFile ("stems").isDirectory(),
+               "sin pistas, la carpeta de la separación desaparece del disco");
+
+        // Todo sigue abriéndose sin archivos que falten.
+        const auto expected = tracks.size();
+        done = false;
+        juce::Result opened = juce::Result::ok();
+        projects.openProject (root, [&] (juce::Result r) { opened = r; done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        CHECK (done && opened.wasOk() && tracks.size() == expected
+                   && std::all_of (tracks.begin(), tracks.end(), [] (const auto& t) { return t->hasClips(); }),
+               "al abrirlo, todas las pistas encuentran su audio " << opened.getErrorMessage());
+
+        projects.newProject();
+        root.deleteRecursively();
+        outside.deleteFile();
+    }
 }
 
 void runFolderTests()
@@ -355,5 +457,6 @@ void runFolderTests()
     testFolderModel();
     testFolderList();
     testFolderWindow();
+    testProjectFolderOnDisk();
 }
 }
