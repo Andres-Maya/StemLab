@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 
 namespace stemlab
 {
@@ -204,7 +205,11 @@ namespace
 }
 
 ProjectManager::ProjectManager (AudioEngine& audioEngine)
-    : engine (audioEngine),
+    : trashFolder (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                       .getChildFile ("StemLab")
+                       .getChildFile ("Papelera-" + juce::Time::getCurrentTime().formatted ("%Y%m%d-%H%M%S"))
+                       .getNonexistentSibling (false)),
+      engine (audioEngine),
       loaderPool (juce::ThreadPoolOptions{}.withThreadName ("StemLab Loader").withNumberOfThreads (1))
 {
     engine.onSampleRateChanged = [this] { reloadAllTracks(); };
@@ -215,6 +220,7 @@ ProjectManager::~ProjectManager()
 {
     engine.onSampleRateChanged = nullptr;
     loaderPool.removeAllJobs (true, 10000);
+    emptyTrash();
 }
 
 void ProjectManager::setBpm (double bpm)
@@ -228,6 +234,7 @@ void ProjectManager::newProject()
 {
     ++generation;
     undoManager.clearUndoHistory();
+    emptyTrash();
     folders.clear();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
@@ -289,6 +296,7 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
 
     ++generation;
     undoManager.clearUndoHistory();
+    emptyTrash();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
     engine.getMixer().getMasterVolume().set (document.masterVolumeDb);
@@ -317,6 +325,7 @@ juce::Result ProjectManager::save()
     if (const auto result = project.createFolderStructure(); result.failed())
         return result;
 
+    syncProjectFiles();
     const auto result = ProjectSerializer::write (project, describe());
 
     if (result.wasOk())
@@ -351,11 +360,27 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
                 return juce::Result::fail ("No se pudo copiar la carpeta " + subfolder);
         }
 
-        // Los clips apuntan ahora a las copias.
-        for (const auto& track : engine.getMixer().getTracks())
-            for (const auto& source : track->getSources())
-                if (source->file.isAChildOf (oldFolder))
-                    source->file = newFolder.getChildFile (source->file.getRelativePathFrom (oldFolder));
+        // Los clips (también los del historial) apuntan ahora a las copias.
+        const auto moved = [&] (const juce::File& file)
+        {
+            return newFolder.getChildFile (file.getRelativePathFrom (oldFolder));
+        };
+
+        for (const auto& source : getLiveSources())
+            if (source->file.isAChildOf (oldFolder))
+                source->file = moved (source->file);
+
+        for (auto& folder : folders)
+            if (folder.sourceFile.isAChildOf (oldFolder))
+                folder.sourceFile = moved (folder.sourceFile);
+
+        for (auto& [trashed, original] : trashOrigins)
+            if (original.isAChildOf (oldFolder))
+                original = moved (original);
+
+        for (auto& reserved : reservedFiles)
+            if (reserved.isAChildOf (oldFolder))
+                reserved = moved (reserved);
 
         // La sesión temporal ya está copiada: se elimina para no llenar el disco.
         if (project.isTemporary())
@@ -372,6 +397,7 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
     if (const auto result = project.createFolderStructure(); result.failed())
         return result;
 
+    syncProjectFiles();
     const auto result = ProjectSerializer::write (project, describe());
 
     if (result.wasOk())
@@ -456,7 +482,7 @@ std::shared_ptr<AudioTrack> ProjectManager::pasteTrack (const AudioTrack& copyFr
 void ProjectManager::removeTrack (const AudioTrack& track, const juce::String& actionName)
 {
     // La pista queda guardada en el historial (en el hilo de mensajes) para
-    // poder recuperarla. Los archivos de audio se conservan en disco.
+    // poder recuperarla. Su audio sale de la carpeta del proyecto al guardar.
     for (const auto& t : engine.getMixer().getTracks())
     {
         if (t.get() == &track)
@@ -679,19 +705,23 @@ juce::String ProjectManager::createCopyName (const juce::String& name) const
     }
 }
 
-juce::File ProjectManager::createRecordingFile() const
+juce::File ProjectManager::createRecordingFile()
 {
-    return project.getRecordingsDirectory().getNonexistentChildFile ("Grabacion", ".wav", false);
+    const auto file = project.getRecordingsDirectory().getNonexistentChildFile ("Grabacion", ".wav", false);
+    reservedFiles.addIfNotAlreadyThere (file);
+    return file;
 }
 
-juce::File ProjectManager::createStemsFolderFor (const AudioTrack& track) const
+juce::File ProjectManager::createStemsFolderFor (const AudioTrack& track)
 {
     auto baseName = juce::File::createLegalFileName (track.getSourceFile().getFileNameWithoutExtension());
 
     if (baseName.isEmpty())
         baseName = "stems";
 
-    return project.getStemsDirectory().getChildFile (baseName).getNonexistentSibling (false);
+    const auto folder = project.getStemsDirectory().getChildFile (baseName).getNonexistentSibling (false);
+    reservedFiles.addIfNotAlreadyThere (folder);
+    return folder;
 }
 
 //==============================================================================
@@ -782,6 +812,21 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
 
     auto& mixer = engine.getMixer();
     auto startedTransaction = false;
+
+    // El audio ya está en el proyecto: deja de estar reservado y guardar lo
+    // tiene en cuenta (también sus archivos en disco).
+    loadedSources.erase (std::remove_if (loadedSources.begin(), loadedSources.end(),
+                                         [] (const auto& weak) { return weak.expired(); }),
+                         loadedSources.end());
+
+    for (const auto& [path, source] : sources)
+    {
+        loadedSources.push_back (source);
+        reservedFiles.removeIf ([&] (const juce::File& reserved)
+        {
+            return source->file == reserved || source->file.isAChildOf (reserved);
+        });
+    }
 
     for (const auto& request : requests)
     {
@@ -907,6 +952,7 @@ void ProjectManager::reloadAllTracks()
     // frecuencia anterior): el historial ya no sirve.
     ++generation;
     undoManager.clearUndoHistory();
+    emptyTrash();
     engine.getMixer().removeAllTracks();
     sendChangeMessage();
     loadTracks (std::move (requests), [this, wasClean] (juce::Result)
@@ -969,5 +1015,249 @@ ProjectDocument ProjectManager::describe() const
     }
 
     return document;
+}
+
+//==============================================================================
+void ProjectManager::syncProjectFiles()
+{
+    // Mientras se carga audio (importar, separar, grabar) sus archivos aún no
+    // están en ninguna pista: no se toca nada hasta el siguiente guardado.
+    if (isLoading())
+        return;
+
+    const auto root = project.getDirectory();
+    const auto audioFolder = project.getAudioDirectory();
+    const auto stemsFolder = project.getStemsDirectory();
+    const juce::Array<juce::File> audioSubfolders { audioFolder, stemsFolder, project.getRecordingsDirectory() };
+    const auto& tracks = engine.getMixer().getTracks();
+
+    // 1. Lo que se quitó al guardar y ha vuelto con Deshacer, a su sitio.
+    for (const auto& track : tracks)
+        for (const auto& source : track->getSources())
+            restoreFromTrash (source);
+
+    // 2. El audio que ya no usa ninguna pista sale del proyecto.
+    std::set<juce::String> used;
+
+    for (const auto& track : tracks)
+        for (const auto& source : track->getSources())
+            used.insert (source->file.getFullPathName());
+
+    const auto audioFiles = engine.getFormatManager().getWildcardForAllFormats();
+
+    for (const auto& subfolder : audioSubfolders)
+        for (const auto& file : subfolder.findChildFiles (juce::File::findFiles, true, audioFiles))
+            if (used.count (file.getFullPathName()) == 0 && ! isReserved (file))
+                moveToTrash (file);
+
+    // 3. Cada archivo, donde está su pista: en la carpeta en disco de su
+    //    carpeta de pistas o, fuera de ellas, en audio/. Un archivo que usan
+    //    pistas de sitios distintos (pistas pegadas) se queda donde está.
+    const auto folderPaths = folderDirectories();
+    std::map<juce::String, juce::File> destinations;
+    std::set<juce::String> shared;
+
+    for (const auto& track : tracks)
+    {
+        const auto found = folderPaths.find (track->getFolderId());
+        const auto destination = found != folderPaths.end() ? found->second : audioFolder;
+
+        for (const auto& source : track->getSources())
+        {
+            const auto path = source->file.getFullPathName();
+
+            if (const auto [it, added] = destinations.emplace (path, destination); ! added && it->second != destination)
+                shared.insert (path);
+        }
+    }
+
+    for (const auto& [path, destination] : destinations)
+    {
+        const juce::File file (path);
+
+        if (shared.count (path) > 0 || ! file.existsAsFile() || file.getParentDirectory() == destination)
+            continue;
+
+        if (! file.isAChildOf (root))
+            moveAudioFile (file, destination, true);        // de fuera del proyecto: se copia dentro
+        else if (destination != audioFolder || file.isAChildOf (stemsFolder))
+            moveAudioFile (file, destination, false);       // sale de stems/ o entra en una carpeta
+    }
+
+    // 4. Las subcarpetas vacías (de una carpeta de pistas eliminada) se borran.
+    for (const auto& subfolder : audioSubfolders)
+    {
+        auto children = subfolder.findChildFiles (juce::File::findDirectories, true);
+
+        // Primero las más profundas, para que sus padres queden vacíos.
+        std::sort (children.begin(), children.end(), [] (const juce::File& a, const juce::File& b)
+        {
+            return a.getFullPathName().length() > b.getFullPathName().length();
+        });
+
+        for (const auto& child : children)
+            if (! isReserved (child) && child.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0)
+                child.deleteFile();
+    }
+}
+
+std::map<juce::String, juce::File> ProjectManager::folderDirectories() const
+{
+    const auto stemsFolder = project.getStemsDirectory();
+    std::map<juce::String, juce::File> result;
+    juce::Array<juce::File> taken;
+
+    // La de sus stems: la carpeta donde los dejó la separación.
+    for (const auto& folder : folders)
+    {
+        auto candidates = getStemTracks (folder.id);
+
+        for (const auto& track : getFolderTracks (folder.id))
+            candidates.push_back (track);
+
+        for (const auto& track : candidates)
+        {
+            for (const auto& source : track->getSources())
+            {
+                const auto parent = source->file.getParentDirectory();
+
+                if (result.count (folder.id) == 0 && parent.isAChildOf (stemsFolder) && ! taken.contains (parent))
+                {
+                    result[folder.id] = parent;
+                    taken.add (parent);
+                }
+            }
+        }
+    }
+
+    // Una carpeta sin stems en disco (solo tiene pistas que se metieron en
+    // ella): stems/<nombre>/, sin coincidir con la de otra.
+    for (const auto& folder : folders)
+    {
+        if (result.count (folder.id) > 0 || getFolderTracks (folder.id).empty())
+            continue;
+
+        auto name = juce::File::createLegalFileName (folder.name);
+
+        if (name.isEmpty())
+            name = "Carpeta";
+
+        auto directory = stemsFolder.getChildFile (name);
+
+        for (int number = 2; taken.contains (directory) || isReserved (directory); ++number)
+            directory = stemsFolder.getChildFile (name + " (" + juce::String (number) + ")");
+
+        result[folder.id] = directory;
+        taken.add (directory);
+    }
+
+    return result;
+}
+
+bool ProjectManager::moveAudioFile (const juce::File& file, const juce::File& destinationFolder, bool keepOriginal)
+{
+    auto target = destinationFolder.getChildFile (file.getFileName());
+
+    if (target.exists())
+        target = target.getNonexistentSibling();
+
+    if (destinationFolder.createDirectory().failed()
+        || ! (keepOriginal ? file.copyFileTo (target) : file.moveFileTo (target)))
+    {
+        DBG ("No se pudo mover " << file.getFullPathName() << " a " << target.getFullPathName());
+        return false;
+    }
+
+    renameSources (file, target);
+
+    for (auto& folder : folders)
+        if (folder.sourceFile == file)
+            folder.sourceFile = target;
+
+    return true;
+}
+
+void ProjectManager::moveToTrash (const juce::File& file)
+{
+    // Cada archivo en su propia subcarpeta, con su nombre (si vuelve con
+    // Deshacer, la separación usa ese nombre para la carpeta de stems).
+    const auto slot = trashFolder.getChildFile (juce::String (static_cast<int> (trashOrigins.size()) + 1))
+                                 .getNonexistentSibling (false);
+    const auto target = slot.getChildFile (file.getFileName());
+
+    if (slot.createDirectory().failed() || ! file.moveFileTo (target))
+    {
+        DBG ("No se pudo quitar " << file.getFullPathName() << " del proyecto");
+        return;
+    }
+
+    // Los clips del historial tienen su audio en memoria; su ruta apunta a la
+    // papelera hasta que vuelvan a una pista y se guarde.
+    trashOrigins[target.getFullPathName()] = file;
+    renameSources (file, target);
+}
+
+void ProjectManager::restoreFromTrash (const std::shared_ptr<ClipSource>& source)
+{
+    const auto found = trashOrigins.find (source->file.getFullPathName());
+
+    if (found == trashOrigins.end() || ! source->file.existsAsFile())
+        return;
+
+    const auto trashed = source->file;
+    const auto original = found->second;
+    auto target = original;
+
+    // Otro archivo ocupó su nombre mientras estaba en la papelera.
+    if (target.exists())
+        target = target.getNonexistentSibling();
+
+    if (target.getParentDirectory().createDirectory().failed() || ! trashed.moveFileTo (target))
+        return;
+
+    trashOrigins.erase (found);
+    renameSources (trashed, target);
+
+    for (auto& folder : folders)
+        if (folder.sourceFile == original)
+            folder.sourceFile = target;
+}
+
+void ProjectManager::emptyTrash()
+{
+    trashOrigins.clear();
+    trashFolder.deleteRecursively();
+}
+
+void ProjectManager::renameSources (const juce::File& from, const juce::File& to)
+{
+    for (const auto& source : getLiveSources())
+        if (source->file == from)
+            source->file = to;
+}
+
+std::vector<std::shared_ptr<ClipSource>> ProjectManager::getLiveSources()
+{
+    std::vector<std::shared_ptr<ClipSource>> live;
+
+    for (const auto& weak : loadedSources)
+        if (auto source = weak.lock())
+            live.push_back (std::move (source));
+
+    // Y el audio de las pistas que no pasó por la carga (por si acaso).
+    for (const auto& track : engine.getMixer().getTracks())
+        for (auto& source : track->getSources())
+            if (std::find (live.begin(), live.end(), source) == live.end())
+                live.push_back (std::move (source));
+
+    return live;
+}
+
+bool ProjectManager::isReserved (const juce::File& file) const
+{
+    return std::any_of (reservedFiles.begin(), reservedFiles.end(), [&] (const juce::File& reserved)
+    {
+        return file == reserved || file.isAChildOf (reserved) || reserved.isAChildOf (file);
+    });
 }
 }
