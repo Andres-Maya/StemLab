@@ -98,9 +98,9 @@ MiProyecto/
   exports/          mezclas exportadas (WAV / MP3)
 ```
 
-Hasta el primer **Guardar como**, la sesión vive en `%TEMP%\StemLab\Sesion-...`.
+Hasta el primer **Guardar como**, la sesión vive en `%TEMP%\StemLab\Sesion-...`. Si se cierra StemLab, se crea un proyecto nuevo o se abre otro sin haberla guardado, esa carpeta se borra (con lo que tuviera dentro: grabaciones, stems...).
 
-Al **Guardar**, la carpeta queda como se ve en el programa: el audio de las pistas o fragmentos eliminados (y las carpetas de pistas que se quedaron sin pistas) sale de `audio/`, `stems/` y `recordings/`; el de una pista que se saca de una carpeta pasa a `audio/`, y el de una que se mete, a `stems/<carpeta>/`; el audio que estaba fuera del proyecto se copia dentro. Lo quitado va a una papelera temporal (`%TEMP%\StemLab\Papelera-...`) mientras StemLab sigue abierto: si se recupera con **Ctrl+Z** y se vuelve a guardar, el archivo vuelve a su sitio. Las grabaciones y separaciones en curso no se tocan.
+Al **Guardar**, la carpeta queda como se ve en el programa: el audio de las pistas o fragmentos eliminados (y las carpetas de pistas que se quedaron sin pistas) sale de `audio/`, `stems/` y `recordings/`; el de una pista que se saca de una carpeta pasa a `audio/`, y el de una que se mete, a `stems/<carpeta>/`; el audio que estaba fuera del proyecto se copia dentro. Lo quitado va a una papelera temporal (`%TEMP%\StemLab\Papelera-...`) mientras StemLab sigue abierto: si se recupera con **Ctrl+Z**, el archivo vuelve a su sitio en ese momento. Las grabaciones y separaciones en curso no se tocan.
 
 Las rutas son relativas a la carpeta, así que el proyecto se puede mover o copiar entero (por ejemplo, a otro equipo). Los proyectos antiguos guardaban el mismo JSON en `project.json`: se siguen abriendo (eligiendo el `project.json` o su carpeta), **Guardar** los mantiene así y **Guardar como** en su misma carpeta los convierte en `.stemlab`.
 
