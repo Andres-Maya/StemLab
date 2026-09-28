@@ -112,6 +112,7 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
             projects.setFolderExpanded (folderId, ! folder->expanded);
     };
     trackList.onToggleFolderWindow = [this] (const juce::String& folderId) { toggleFolderWindow (folderId); };
+    trackList.onDeleteFolderRequested = [this] (const juce::String& folderId) { removeFolder (folderId); };
     trackList.onTrackDropped = [this] (std::shared_ptr<AudioTrack> track, const juce::String& folderId, int mixerIndex)
     {
         projects.moveTrackToFolder (track, folderId, mixerIndex);
@@ -701,6 +702,48 @@ void MainComponent::removeTrack (AudioTrack& track)
 
                                             safe->projects.removeTrack (*target);
                                             safe->statusBar.setMessage ("Pista \"" + target->getName() + "\" eliminada. Ctrl+Z la recupera.");
+                                        }));
+}
+
+void MainComponent::removeFolder (const juce::String& folderId)
+{
+    const auto* folder = projects.findFolder (folderId);
+
+    if (folder == nullptr)
+        return;
+
+    // Mientras se cargan sus pistas todavía no están dentro.
+    if (folderId == loadingStemsFolderId)
+    {
+        showError ("Eliminar carpeta", "Espera a que terminen de cargarse las pistas de la separación."_u8);
+        return;
+    }
+
+    const auto tracks = projects.getFolderTracks (folderId);
+
+    if (engine.isRecording() && std::any_of (tracks.begin(), tracks.end(), [] (const auto& t) { return t->isArmed(); }))
+    {
+        showError ("Eliminar carpeta", "No se puede eliminar la carpeta mientras se graba en una de sus pistas."_u8);
+        return;
+    }
+
+    const auto name = folder->name;
+    const auto count = static_cast<int> (tracks.size());
+    const auto message = "¿Estás seguro de que quieres eliminar esta carpeta?\n\n\""_u8 + name + "\" ("
+                       + juce::String (count) + (count == 1 ? " pista" : " pistas") + ")\n\n"
+                       + "Se eliminarán la carpeta y las pistas que tiene dentro; al guardar, su audio saldrá "_u8
+                       + "de la carpeta del proyecto. Puedes recuperarla con Editar > Deshacer (Ctrl+Z)."_u8;
+
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Eliminar carpeta", message,
+                                        "Eliminar", "Cancelar", this,
+                                        juce::ModalCallbackFunction::create (
+                                            [safe = juce::Component::SafePointer<MainComponent> (this), folderId, name] (int result)
+                                        {
+                                            if (result == 0 || safe == nullptr)
+                                                return;
+
+                                            safe->projects.removeFolder (folderId);
+                                            safe->statusBar.setMessage ("Carpeta \"" + name + "\" eliminada. Ctrl+Z la recupera.");
                                         }));
 }
 
