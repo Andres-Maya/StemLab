@@ -92,13 +92,15 @@ MiProyecto/
                     pista: sus clips (archivo relativo, inicio, desde dónde del archivo
                     y duración, en segundos), volumen, paneo, mute, solo y parámetros
                     de cada efecto. Los proyectos de la versión 1 se siguen abriendo.
-  audio/            copias de los archivos importados
-  stems/            resultados de la IA
+  audio/            copias de los archivos importados (y las pistas sacadas de una carpeta)
+  stems/<carpeta>/  resultados de la IA, una subcarpeta por cada carpeta de pistas
   recordings/       grabaciones
   exports/          mezclas exportadas (WAV / MP3)
 ```
 
 Hasta el primer **Guardar como**, la sesión vive en `%TEMP%\StemLab\Sesion-...`.
+
+Al **Guardar**, la carpeta queda como se ve en el programa: el audio de las pistas o fragmentos eliminados (y las carpetas de pistas que se quedaron sin pistas) sale de `audio/`, `stems/` y `recordings/`; el de una pista que se saca de una carpeta pasa a `audio/`, y el de una que se mete, a `stems/<carpeta>/`; el audio que estaba fuera del proyecto se copia dentro. Lo quitado va a una papelera temporal (`%TEMP%\StemLab\Papelera-...`) mientras StemLab sigue abierto: si se recupera con **Ctrl+Z** y se vuelve a guardar, el archivo vuelve a su sitio. Las grabaciones y separaciones en curso no se tocan.
 
 Las rutas son relativas a la carpeta, así que el proyecto se puede mover o copiar entero (por ejemplo, a otro equipo). Los proyectos antiguos guardaban el mismo JSON en `project.json`: se siguen abriendo (eligiendo el `project.json` o su carpeta), **Guardar** los mantiene así y **Guardar como** en su misma carpeta los convierte en `.stemlab`.
 
@@ -256,7 +258,7 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, la carpeta del proyecto en disco al guardar, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
