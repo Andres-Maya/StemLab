@@ -109,6 +109,15 @@ void TrackView::setSelected (bool shouldBeSelected)
     }
 }
 
+void TrackView::setFolderColour (juce::Colour newColour)
+{
+    if (folderColour != newColour)
+    {
+        folderColour = newColour;
+        repaint();
+    }
+}
+
 void TrackView::trackChanged()
 {
     if (! nameLabel.isBeingEdited())
@@ -134,6 +143,14 @@ void TrackView::paint (juce::Graphics& g)
 
     g.setColour (selected ? Palette::panelLight : Palette::panel);
     g.fillRect (header);
+
+    // Dentro de una carpeta: una franja de su color, como sangría.
+    if (! folderColour.isTransparent())
+    {
+        g.setColour (folderColour.withAlpha (0.55f));
+        g.fillRect (header.removeFromLeft (6.0f));
+        header.removeFromLeft (2.0f);
+    }
 
     // Franja de color de la pista (roja mientras se graba en ella).
     g.setColour (track->isArmed() ? Palette::record : colour);
