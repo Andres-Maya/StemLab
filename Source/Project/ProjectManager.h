@@ -119,6 +119,11 @@ public:
         sitio, y dejarla en esa posición del mezclador. Se puede deshacer. */
     void moveTrackToFolder (const std::shared_ptr<AudioTrack>& track, const juce::String& folderId, int mixerIndex);
 
+    /** Elimina la carpeta con las pistas que tiene dentro (las que se sacaron
+        de ella se quedan). Es un solo paso del historial: Ctrl+Z la devuelve
+        entera. Su audio sale de la carpeta del proyecto al guardar. */
+    void removeFolder (const juce::String& folderId);
+
     /** Pista en la que se está grabando (solo una; resalta su franja y la vista
         previa en directo). */
     std::shared_ptr<AudioTrack> getArmedTrack() const;
@@ -209,7 +214,8 @@ private:
           - el audio que ya no usa ninguna pista (pistas o fragmentos eliminados,
             carpetas sin pistas) se quita de audio/, stems/ y recordings/;
           - el audio de una pista que está en una carpeta va a stems/<carpeta>/,
-            y el que se sacó de una carpeta, a audio/;
+            y el que se sacó de una carpeta, a audio/ (las grabaciones se
+            quedan siempre en recordings/);
           - el audio que está fuera del proyecto se copia dentro;
           - las subcarpetas que quedan vacías se borran.
         Lo quitado va a una papelera temporal: si se deshace (Ctrl+Z) y se

@@ -185,6 +185,44 @@ namespace
         int fromIndex, targetIndex;
     };
 
+    /** Poner o quitar una carpeta de la lista (eliminar carpeta). La acción
+        conserva la carpeta (nombre, color, stems...) para devolverla a su sitio. */
+    class FolderPresenceAction final : public juce::UndoableAction
+    {
+    public:
+        FolderPresenceAction (std::vector<TrackFolder>& f, std::function<void()> changed, TrackFolder removed)
+            : folders (f), onChanged (std::move (changed)), folder (std::move (removed))
+        {
+        }
+
+        bool perform() override
+        {
+            const auto found = std::find_if (folders.begin(), folders.end(),
+                                             [this] (const auto& f) { return f.id == folder.id; });
+
+            if (found == folders.end())
+                return false;
+
+            index = static_cast<int> (std::distance (folders.begin(), found));
+            folders.erase (found);
+            onChanged();
+            return true;
+        }
+
+        bool undo() override
+        {
+            folders.insert (folders.begin() + juce::jlimit (0, static_cast<int> (folders.size()), index), folder);
+            onChanged();
+            return true;
+        }
+
+    private:
+        std::vector<TrackFolder>& folders;
+        std::function<void()> onChanged;
+        TrackFolder folder;
+        int index = 0;
+    };
+
     /** Cambiar el nombre de una pista. */
     class RenameTrackAction final : public juce::UndoableAction
     {
@@ -570,6 +608,23 @@ void ProjectManager::moveTrackToFolder (const std::shared_ptr<AudioTrack>& track
     performUndoable (std::make_unique<FolderMoveAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
                                                          track, folderId, mixerIndex),
                      name);
+}
+
+void ProjectManager::removeFolder (const juce::String& folderId)
+{
+    const auto* folder = findFolder (folderId);
+
+    if (folder == nullptr)
+        return;
+
+    // Las pistas y la carpeta, en una sola transacción.
+    undoManager.beginNewTransaction ("Eliminar carpeta");
+
+    for (const auto& track : getFolderTracks (folderId))
+        undoManager.perform (new TrackPresenceAction (TrackPresenceAction::Kind::remove, engine.getMixer(),
+                                                      [this] { notifyTracksEdited(); }, track));
+
+    undoManager.perform (new FolderPresenceAction (folders, [this] { notifyTracksEdited(); }, *folder));
 }
 
 void ProjectManager::trackRenamed (const std::shared_ptr<AudioTrack>& track, const juce::String& oldName)
@@ -1028,7 +1083,8 @@ void ProjectManager::syncProjectFiles()
     const auto root = project.getDirectory();
     const auto audioFolder = project.getAudioDirectory();
     const auto stemsFolder = project.getStemsDirectory();
-    const juce::Array<juce::File> audioSubfolders { audioFolder, stemsFolder, project.getRecordingsDirectory() };
+    const auto recordingsFolder = project.getRecordingsDirectory();
+    const juce::Array<juce::File> audioSubfolders { audioFolder, stemsFolder, recordingsFolder };
     const auto& tracks = engine.getMixer().getTracks();
 
     // 1. Lo que se quitó al guardar y ha vuelto con Deshacer, a su sitio.
@@ -1051,8 +1107,9 @@ void ProjectManager::syncProjectFiles()
                 moveToTrash (file);
 
     // 3. Cada archivo, donde está su pista: en la carpeta en disco de su
-    //    carpeta de pistas o, fuera de ellas, en audio/. Un archivo que usan
-    //    pistas de sitios distintos (pistas pegadas) se queda donde está.
+    //    carpeta de pistas o, fuera de ellas, en audio/. Las grabaciones se
+    //    quedan en recordings/, y un archivo que usan pistas de sitios
+    //    distintos (pistas pegadas), donde está.
     const auto folderPaths = folderDirectories();
     std::map<juce::String, juce::File> destinations;
     std::set<juce::String> shared;
@@ -1075,7 +1132,8 @@ void ProjectManager::syncProjectFiles()
     {
         const juce::File file (path);
 
-        if (shared.count (path) > 0 || ! file.existsAsFile() || file.getParentDirectory() == destination)
+        if (shared.count (path) > 0 || ! file.existsAsFile() || file.getParentDirectory() == destination
+            || file.isAChildOf (recordingsFolder))
             continue;
 
         if (! file.isAChildOf (root))
