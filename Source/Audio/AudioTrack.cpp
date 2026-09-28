@@ -35,6 +35,18 @@ juce::var AudioTrack::getState() const
         state->setProperty (parameter->getId(), parameter->toVar());
 
     state->setProperty ("effects", effects.toVar());
+
+    // Carpeta y origen (separación): solo si los tiene, así los proyectos sin
+    // carpetas guardan exactamente lo mismo que antes.
+    if (folderId.isNotEmpty())
+        state->setProperty ("folder", folderId);
+
+    if (stemGroup.isNotEmpty())
+    {
+        state->setProperty ("stemGroup", stemGroup);
+        state->setProperty ("stemId", stemId);
+    }
+
     return juce::var (state);
 }
 
@@ -44,6 +56,10 @@ void AudioTrack::applyState (const juce::var& state)
         parameter->fromVar (state.getProperty (parameter->getId(), {}));
 
     effects.fromVar (state.getProperty ("effects", {}));
+
+    folderId = state.getProperty ("folder", {}).toString();
+    stemGroup = state.getProperty ("stemGroup", {}).toString();
+    stemId = state.getProperty ("stemId", {}).toString();
 }
 
 std::shared_ptr<AudioTrack> AudioTrack::createCopy (const juce::String& newName) const
