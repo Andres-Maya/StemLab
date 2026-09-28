@@ -56,10 +56,14 @@ public:
 
     /** Abre un .stemlab (o un project.json antiguo), o la carpeta que lo contiene. */
     void openProject (const juce::File& projectFileOrFolder, Callback onDone);
+
+    /** Escribe el .stemlab y deja la carpeta del proyecto como se ve en el
+        programa (ver syncProjectFiles). */
     juce::Result save();
 
     /** Guarda el proyecto en una carpeta propia: newFolder/<nombre>.stemlab más
-        audio/, stems/, recordings/ y exports/ (se copian desde la carpeta anterior). */
+        audio/, stems/, recordings/ y exports/ (se copian desde la carpeta anterior
+        y después se sincronizan como al guardar). */
     juce::Result saveAs (const juce::File& newFolder);
 
     /** Carpeta de "Guardar como" para el archivo elegido en el diálogo:
@@ -152,8 +156,12 @@ public:
 
     /** El nombre tal cual si está libre; si no, "nombre (copia)", "nombre (copia 2)"... */
     juce::String createCopyName (const juce::String& name) const;
-    juce::File createRecordingFile() const;
-    juce::File createStemsFolderFor (const AudioTrack& track) const;
+
+    /** Archivo para una grabación nueva y carpeta para los stems de una
+        separación. Quedan reservados (guardar no los toca mientras se
+        escriben) hasta que su audio se carga en una pista. */
+    juce::File createRecordingFile();
+    juce::File createStemsFolderFor (const AudioTrack& track);
 
 private:
     struct ClipRequest
@@ -193,6 +201,40 @@ private:
     /** Toma la "foto" del estado actual como referencia de "sin cambios". */
     void markSaved();
     juce::String savedSnapshot;
+
+    //==========================================================================
+    // Carpeta del proyecto en disco
+
+    /** Al guardar, la carpeta del proyecto refleja lo que hay en el programa:
+          - el audio que ya no usa ninguna pista (pistas o fragmentos eliminados,
+            carpetas sin pistas) se quita de audio/, stems/ y recordings/;
+          - el audio de una pista que está en una carpeta va a stems/<carpeta>/,
+            y el que se sacó de una carpeta, a audio/;
+          - el audio que está fuera del proyecto se copia dentro;
+          - las subcarpetas que quedan vacías se borran.
+        Lo quitado va a una papelera temporal: si se deshace (Ctrl+Z) y se
+        vuelve a guardar, el archivo vuelve a su sitio. */
+    void syncProjectFiles();
+
+    /** Carpeta en disco de cada carpeta de pistas: la de sus stems
+        (stems/<canción>/) o, si no tiene, una nueva con su nombre. */
+    std::map<juce::String, juce::File> folderDirectories() const;
+
+    bool moveAudioFile (const juce::File& file, const juce::File& destinationFolder, bool keepOriginal);
+    void moveToTrash (const juce::File& file);
+    void restoreFromTrash (const std::shared_ptr<ClipSource>& source);
+    void emptyTrash();
+
+    /** Cambia la ruta de todos los ClipSource vivos (pistas, historial, ventanas de ondas). */
+    void renameSources (const juce::File& from, const juce::File& to);
+    std::vector<std::shared_ptr<ClipSource>> getLiveSources();
+
+    bool isReserved (const juce::File& file) const;
+
+    std::vector<std::weak_ptr<ClipSource>> loadedSources;
+    juce::Array<juce::File> reservedFiles;
+    const juce::File trashFolder;
+    std::map<juce::String, juce::File> trashOrigins;    // archivo en la papelera -> ruta original
 
     AudioEngine& engine;
     Project project;
