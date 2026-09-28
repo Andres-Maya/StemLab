@@ -37,6 +37,17 @@ public:
     bool isArmed() const noexcept                           { return armed; }
     void setArmed (bool shouldBeArmed) noexcept             { armed = shouldBeArmed; }
 
+    /** Carpeta en la que se muestra la pista (id de TrackFolder; vacío = ninguna). */
+    const juce::String& getFolderId() const noexcept        { return folderId; }
+    void setFolderId (juce::String newFolderId)             { folderId = std::move (newFolderId); }
+
+    /** Pista generada por una separación: su grupo (el id de la carpeta que se
+        creó) y el stem ("vocals"...). Se conserva aunque se saque de la carpeta:
+        su onda sigue en la ventana de la separación mientras la pista exista. */
+    const juce::String& getStemGroup() const noexcept       { return stemGroup; }
+    const juce::String& getStemId() const noexcept          { return stemId; }
+    void setStem (juce::String group, juce::String id)      { stemGroup = std::move (group); stemId = std::move (id); }
+
     Parameter& getVolume() noexcept                         { return *volume; }
     Parameter& getPan() noexcept                            { return *pan; }
     Parameter& getMute() noexcept                           { return *mute; }
@@ -86,6 +97,7 @@ private:
 
     juce::String name;
     bool armed = false;
+    juce::String folderId, stemGroup, stemId;
 
     mutable juce::CriticalSection clipLock;
     std::vector<AudioClip> clips;
