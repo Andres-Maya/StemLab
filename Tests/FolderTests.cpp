@@ -428,13 +428,55 @@ namespace
         projects.save();
         CHECK (recording.existsAsFile(), "guardar no quita el archivo de una grabación en curso");
 
-        // Eliminar la carpeta entera (todas sus pistas): se borra su carpeta en disco.
-        for (const auto& stem : projects.getStemTracks (id))
-            projects.removeTrack (*stem);
+        // Grabaciones: añadir, eliminar y recuperar una toma se refleja en recordings/.
+        const auto take = writeConstantWav (projects.createRecordingFile(), 44100.0, 0.5, 0.1f);
+        done = false;
+        projects.addRecording ({ take, 0, 0, 44100.0 }, {}, [&] (juce::Result) { done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        const auto recorded = tracks.back();
+        projects.save();
+        CHECK (done && take.isAChildOf (root.getChildFile ("recordings")) && take.existsAsFile()
+                   && recorded->getSourceFile() == take && ! projects.hasUnsavedChanges(),
+               "una grabación nueva queda en recordings/ al guardar");
+
+        projects.moveTrackToFolder (recorded, id, 1);
+        projects.save();
+        CHECK (take.existsAsFile() && recorded->getSourceFile() == take,
+               "una grabación metida en una carpeta sigue en recordings/");
+        projects.undo();
+
+        projects.removeTrack (*recorded);
+        projects.save();
+        CHECK (! take.exists(), "eliminar la grabación y guardar la quita de recordings/");
+        projects.undo();
+        projects.save();
+        CHECK (take.existsAsFile() && recorded->getSourceFile() == take && ! projects.hasUnsavedChanges(),
+               "Ctrl+Z y guardar la devuelve a recordings/");
+
+        // Eliminar la carpeta: la carpeta y sus pistas en un paso; en disco, su subcarpeta.
+        const auto folderTracks = projects.getFolderTracks (id);
+        CHECK (folderTracks.size() == 4, "la carpeta tiene sus 4 pistas");
+        projects.removeFolder (id);
+        CHECK (projects.findFolder (id) == nullptr && projects.getFolderTracks (id).empty()
+                   && projects.getUndoDescription() == "Eliminar carpeta",
+               "Eliminar carpeta quita la carpeta y sus pistas en un solo paso del historial");
 
         projects.save();
-        CHECK (! stemsFolder.exists() && root.getChildFile ("stems").isDirectory(),
-               "sin pistas, la carpeta de la separación desaparece del disco");
+        CHECK (! stemsFolder.exists() && root.getChildFile ("stems").isDirectory()
+                   && ! root.getChildFile ("ProyectoDisco.stemlab").loadFileAsString().contains (id),
+               "al guardar, su carpeta desaparece del disco y del .stemlab");
+
+        projects.undo();
+        CHECK (projects.findFolder (id) != nullptr && projects.getFolderTracks (id) == folderTracks,
+               "Ctrl+Z devuelve la carpeta con sus pistas, en su sitio");
+        projects.save();
+        CHECK (stemsFolder.getNumberOfChildFiles (juce::File::findFiles) == 4 && ! projects.hasUnsavedChanges(),
+               "y al guardar, sus stems vuelven a stems/<carpeta>/");
+
+        projects.redo();
+        projects.save();
+        CHECK (! stemsFolder.exists() && projects.findFolder (id) == nullptr,
+               "Ctrl+Y la vuelve a eliminar");
 
         // Todo sigue abriéndose sin archivos que falten.
         const auto expected = tracks.size();
