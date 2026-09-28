@@ -83,6 +83,7 @@ private:
     /** Supr / Retroceso: el fragmento seleccionado o, si no hay, la pista. */
     void deleteSelection();
     void removeTrack (AudioTrack& track);
+    void removeFolder (const juce::String& folderId);
     /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
     void addTrack (int insertIndex = -1, const juce::String& folderId = {});
 
