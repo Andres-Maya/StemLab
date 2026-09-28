@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Project.h"
+#include "TrackFolder.h"
 
 #include <vector>
 
@@ -27,6 +28,7 @@ struct TrackDescription
 struct ProjectDocument
 {
     std::vector<TrackDescription> tracks;
+    std::vector<TrackFolder> folders;
     float masterVolumeDb = 0.0f;
 };
 

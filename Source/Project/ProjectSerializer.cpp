@@ -50,6 +50,38 @@ juce::String ProjectSerializer::toJson (const Project& project, const ProjectDoc
     root->setProperty ("masterVolume", document.masterVolumeDb);
     root->setProperty ("tracks", tracks);
 
+    if (! document.folders.empty())
+    {
+        juce::Array<juce::var> folders;
+
+        for (const auto& folder : document.folders)
+        {
+            auto* object = new juce::DynamicObject();
+            object->setProperty ("id", folder.id);
+            object->setProperty ("name", folder.name);
+            object->setProperty ("colour", folder.colour.toDisplayString (true));
+            object->setProperty ("expanded", folder.expanded);
+
+            juce::Array<juce::var> stems;
+
+            for (const auto& stem : folder.stems)
+                stems.add (stem);
+
+            object->setProperty ("stems", stems);
+
+            if (folder.sourceFile != juce::File())
+            {
+                object->setProperty ("sourceFile", project.toStoredPath (folder.sourceFile));
+                object->setProperty ("sourceStart", folder.sourceStartSeconds);
+                object->setProperty ("sourceLength", folder.sourceLengthSeconds);
+            }
+
+            folders.add (juce::var (object));
+        }
+
+        root->setProperty ("folders", folders);
+    }
+
     return juce::JSON::toString (juce::var (root), false);
 }
 
@@ -116,6 +148,34 @@ juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& pr
             }
 
             document.tracks.push_back (std::move (description));
+        }
+    }
+
+    const auto foldersVar = root.getProperty ("folders", {});
+
+    if (const auto* folders = foldersVar.getArray())
+    {
+        for (const auto& object : *folders)
+        {
+            TrackFolder folder;
+            folder.id = object.getProperty ("id", {}).toString();
+            folder.name = object.getProperty ("name", "Carpeta").toString();
+            folder.colour = juce::Colour::fromString (object.getProperty ("colour", "ff4fc3f7").toString());
+            folder.expanded = object.getProperty ("expanded", true);
+
+            if (const auto* stems = object.getProperty ("stems", {}).getArray())
+                for (const auto& stem : *stems)
+                    folder.stems.add (stem.toString());
+
+            if (const auto stored = object.getProperty ("sourceFile", {}).toString(); stored.isNotEmpty())
+            {
+                folder.sourceFile = project.fromStoredPath (stored);
+                folder.sourceStartSeconds = object.getProperty ("sourceStart", 0.0);
+                folder.sourceLengthSeconds = object.getProperty ("sourceLength", -1.0);
+            }
+
+            if (folder.id.isNotEmpty())
+                document.folders.push_back (std::move (folder));
         }
     }
 
