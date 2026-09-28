@@ -94,7 +94,7 @@ MiProyecto/
                     de cada efecto. Los proyectos de la versión 1 se siguen abriendo.
   audio/            copias de los archivos importados (y las pistas sacadas de una carpeta)
   stems/<carpeta>/  resultados de la IA, una subcarpeta por cada carpeta de pistas
-  recordings/       grabaciones
+  recordings/       grabaciones (se quedan aquí aunque su pista se meta en una carpeta)
   exports/          mezclas exportadas (WAV / MP3)
 ```
 
@@ -203,6 +203,7 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
      - El botón **Ondas**, al lado, abre y cierra la ventana de ondas de esa separación.
      - Para **meter** una pista, arrástrala justo debajo de la cabecera, entre sus pistas, al final del bloque o sobre la cabecera si está plegada. Para **sacarla**, arrástrala por encima de la cabecera o por debajo del bloque. Mientras la arrastras, lleva la franja del color de la carpeta si va a quedar dentro.
      - También desde el clic derecho de la pista: **Sacar de la carpeta** y **Meter en la carpeta ▸**.
+     - Clic derecho en la cabecera: **Plegar / Desplegar**, **Abrir / Cerrar ondas** y **Eliminar carpeta…**, que (tras confirmar) quita la carpeta con las pistas que tiene dentro en un solo paso. Las pistas que se sacaron de ella se quedan.
      - Una pista sacada de la carpeta conserva su onda. Todo se puede deshacer con **Ctrl+Z**, y las carpetas (plegadas o no) se guardan en el `.stemlab`.
    - **Copiar, cortar y pegar pistas:** haz clic en la cabecera de la pista (así no queda ningún fragmento seleccionado) y pulsa **Ctrl+C** o **Ctrl+X**. **Ctrl+V** pega una copia debajo de la pista seleccionada, con sus fragmentos, volumen, paneo y efectos. Si el nombre ya existe, se añade "(copia)". También está en el menú **Editar** y en el clic derecho de la cabecera.
    - Con un fragmento seleccionado, **Ctrl+C / Ctrl+X** actúan sobre el fragmento. **Ctrl+V** pega siempre lo último que copiaste, sea un fragmento o una pista.
