@@ -13,7 +13,7 @@
 #include <algorithm>
 
 // Archivos de proyecto .stemlab: dónde se guardan, cómo se abren, proyectos
-// antiguos (project.json) y "Abrir reciente".
+// antiguos (project.json), "Abrir reciente" y las sesiones temporales.
 
 namespace stemlab::test
 {
@@ -254,6 +254,63 @@ namespace
 
         folder.deleteRecursively();
     }
+
+    void testTemporarySessions()
+    {
+        section ("Sesiones temporales: se borran al dejarlas");
+
+        const auto base = outputFolder().getChildFile ("Sesiones");
+        base.deleteRecursively();
+        base.createDirectory();
+
+        juce::File firstSession;
+
+        {
+            AudioEngine engine;
+            ProjectManager projects (engine);
+            firstSession = projects.getProject().getDirectory();
+            CHECK (projects.getProject().isTemporary() && firstSession.isDirectory()
+                       && firstSession.getFileName().startsWith ("Sesion-"),
+                   "un proyecto nuevo vive en %TEMP%/StemLab/Sesion-...");
+
+            // Algo de audio en la sesión, como una grabación sin guardar.
+            const auto take = writeConstantWav (projects.getProject().getRecordingsDirectory().getChildFile ("Grabacion.wav"),
+                                                44100.0, 0.2, 0.1f);
+
+            // (La sesión nueva puede reutilizar el nombre si es en el mismo segundo.)
+            projects.newProject();
+            const auto secondSession = projects.getProject().getDirectory();
+            CHECK (! take.exists() && secondSession.isDirectory()
+                       && secondSession.getNumberOfChildFiles (juce::File::findFiles, "*") == 0,
+                   "Nuevo proyecto borra la sesión anterior sin guardar (y su grabación)");
+
+            // Guardar una sesión la convierte en proyecto: ese ya no se borra.
+            projects.addEmptyTrack ("Pista");
+            const auto saved = base.getChildFile ("Guardado");
+            CHECK (projects.saveAs (saved).wasOk() && ! secondSession.exists(), "Guardar como se lleva la sesión");
+
+            projects.newProject();
+            const auto thirdSession = projects.getProject().getDirectory();
+            CHECK (saved.getChildFile ("Guardado.stemlab").existsAsFile(), "Nuevo proyecto no toca un proyecto guardado");
+
+            auto done = false;
+            projects.openProject (saved, [&] (juce::Result) { done = true; });
+            runLoopUntil ([&] { return done; }, 10000);
+            CHECK (done && ! thirdSession.exists() && saved.isDirectory(), "abrir otro proyecto borra la sesión sin guardar");
+
+            projects.newProject();
+            firstSession = projects.getProject().getDirectory();
+
+            // Un proyecto que no se puede abrir deja la sesión como estaba.
+            done = false;
+            projects.openProject (base.getChildFile ("NoExiste"), [&] (juce::Result) { done = true; });
+            CHECK (done && firstSession.isDirectory() && projects.getProject().isTemporary(),
+                   "si no se pudo abrir, la sesión sigue ahí");
+        }
+
+        CHECK (! firstSession.exists(), "cerrar StemLab borra la sesión sin guardar");
+        base.deleteRecursively();
+    }
 }
 
 void runProjectFileTests()
@@ -261,5 +318,6 @@ void runProjectFileTests()
     testStemlabFiles();
     testFileAssociationValues();
     testRecentProjects();
+    testTemporarySessions();
 }
 }
