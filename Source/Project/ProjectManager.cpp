@@ -259,6 +259,7 @@ ProjectManager::~ProjectManager()
     engine.onSampleRateChanged = nullptr;
     loaderPool.removeAllJobs (true, 10000);
     emptyTrash();
+    discardTemporarySession();
 }
 
 void ProjectManager::setBpm (double bpm)
@@ -273,6 +274,7 @@ void ProjectManager::newProject()
     ++generation;
     undoManager.clearUndoHistory();
     emptyTrash();
+    discardTemporarySession();
     folders.clear();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
@@ -339,6 +341,7 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
     engine.getMixer().removeAllTracks();
     engine.getMixer().getMasterVolume().set (document.masterVolumeDb);
 
+    discardTemporarySession();
     project = std::move (loaded);
     project.createFolderStructure();
     folders = document.folders;
@@ -681,6 +684,13 @@ void ProjectManager::addRecording (const RecordingInfo& recording, std::weak_ptr
 
 void ProjectManager::notifyTracksEdited()
 {
+    // Lo que vuelve con Deshacer (o Rehacer) recupera al momento su audio de
+    // la papelera: lo que se ve en el programa siempre tiene su archivo en disco.
+    if (! trashOrigins.empty())
+        for (const auto& track : engine.getMixer().getTracks())
+            for (const auto& source : track->getSources())
+                restoreFromTrash (source);
+
     engine.getMixer().updateContentLength();
     sendChangeMessage();
 }
@@ -1087,7 +1097,8 @@ void ProjectManager::syncProjectFiles()
     const juce::Array<juce::File> audioSubfolders { audioFolder, stemsFolder, recordingsFolder };
     const auto& tracks = engine.getMixer().getTracks();
 
-    // 1. Lo que se quitó al guardar y ha vuelto con Deshacer, a su sitio.
+    // 1. Lo que se quitó al guardar y ha vuelto con Deshacer, a su sitio (ya
+    //    se hace al deshacer; aquí por si no se pudo mover entonces).
     for (const auto& track : tracks)
         for (const auto& source : track->getSources())
             restoreFromTrash (source);
@@ -1309,6 +1320,16 @@ std::vector<std::shared_ptr<ClipSource>> ProjectManager::getLiveSources()
                 live.push_back (std::move (source));
 
     return live;
+}
+
+void ProjectManager::discardTemporarySession()
+{
+    const auto sessions = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("StemLab");
+    const auto& folder = project.getDirectory();
+
+    // Solo carpetas de sesión, por si acaso: nunca un proyecto guardado.
+    if (project.isTemporary() && folder.isAChildOf (sessions) && folder.getFileName().startsWith ("Sesion-"))
+        folder.deleteRecursively();
 }
 
 bool ProjectManager::isReserved (const juce::File& file) const
