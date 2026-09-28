@@ -686,7 +686,7 @@ void MainComponent::removeTrack (AudioTrack& track)
             weakTrack = t;
 
     const auto message = "¿Estás seguro de que quieres eliminar esta pista?\n\n\""_u8 + track.getName() + "\"\n\n"
-                       + "Sus fragmentos se quitarán del proyecto; los archivos de audio se conservan en disco. "_u8
+                       + "Sus fragmentos se quitarán del proyecto y, al guardar, su audio saldrá de la carpeta del proyecto. "_u8
                        + "Puedes recuperarla con Editar > Deshacer (Ctrl+Z)."_u8;
 
     juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Eliminar pista", message,
