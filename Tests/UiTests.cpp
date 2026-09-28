@@ -29,7 +29,7 @@ namespace
             TrackListView view (engine);
             int added = 0;
             int reordered = 0;
-            view.onAddTrack = [&] (int insertIndex)
+            view.onAddTrack = [&] (int insertIndex, const juce::String&)
             {
                 ++added;
                 engine.getMixer().addTrack (std::make_shared<AudioTrack> ("Pista " + juce::String (added)), insertIndex);
@@ -41,9 +41,9 @@ namespace
             view.refresh();
             saveSnapshot (view.createComponentSnapshot (view.getLocalBounds()), "addrow-empty.png");
 
-            view.onAddTrack (-1);                     /* Pista 1 */
-            view.onAddTrack (-1);                     /* Pista 2 */
-            view.onAddTrack (1);                      /* Pista 3, con el + de la Pista 1: queda en medio */
+            view.onAddTrack (-1, {});                 /* Pista 1 */
+            view.onAddTrack (-1, {});                 /* Pista 2 */
+            view.onAddTrack (1, {});                  /* Pista 3, con el + de la Pista 1: queda en medio */
             const auto& tracks = engine.getMixer().getTracks();
             CHECK (tracks.size() == 3 && tracks[1]->getName() == "Pista 3",
                    "el + de una pista inserta la nueva justo debajo de ella");
