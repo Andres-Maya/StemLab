@@ -14,7 +14,8 @@ void runEditingTests();
     pistas, también con las teclas de la ventana (TrackTests.cpp). */
 void runTrackTests();
 
-/** Carpetas de separación: meter/sacar pistas, lista desplegable y ventana de ondas (FolderTests.cpp). */
+/** Carpetas de separación: meter/sacar pistas, lista desplegable, ventana de ondas
+    y la carpeta del proyecto en disco al guardar (FolderTests.cpp). */
 void runFolderTests();
 
 /** Archivos .stemlab: guardar, abrir, proyectos antiguos y "Abrir reciente" (ProjectFileTests.cpp). */
