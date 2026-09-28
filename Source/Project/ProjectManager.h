@@ -52,6 +52,8 @@ public:
         guardado, apertura o proyecto nuevo. */
     bool hasUnsavedChanges() const;
 
+    /** Proyecto vacío en una sesión temporal. La sesión anterior sin guardar
+        (si la había) se borra, igual que al abrir otro proyecto o al cerrar. */
     void newProject();
 
     /** Abre un .stemlab (o un project.json antiguo), o la carpeta que lo contiene. */
@@ -218,8 +220,8 @@ private:
             quedan siempre en recordings/);
           - el audio que está fuera del proyecto se copia dentro;
           - las subcarpetas que quedan vacías se borran.
-        Lo quitado va a una papelera temporal: si se deshace (Ctrl+Z) y se
-        vuelve a guardar, el archivo vuelve a su sitio. */
+        Lo quitado va a una papelera temporal: si se deshace (Ctrl+Z), el
+        archivo vuelve a su sitio en ese momento. */
     void syncProjectFiles();
 
     /** Carpeta en disco de cada carpeta de pistas: la de sus stems
@@ -236,6 +238,10 @@ private:
     std::vector<std::shared_ptr<ClipSource>> getLiveSources();
 
     bool isReserved (const juce::File& file) const;
+
+    /** Borra la carpeta de la sesión sin guardar (%TEMP%/StemLab/Sesion-...)
+        al dejarla: nadie la va a volver a abrir. */
+    void discardTemporarySession();
 
     std::vector<std::weak_ptr<ClipSource>> loadedSources;
     juce::Array<juce::File> reservedFiles;
