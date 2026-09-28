@@ -5,6 +5,7 @@
 
 #include "Audio/AudioEngine.h"
 #include "ProjectSerializer.h"
+#include "TrackFolder.h"
 
 #include <functional>
 #include <map>
@@ -32,6 +33,11 @@ public:
         juce::File file;
         double startSeconds = 0.0;
         bool copyIntoProject = false;   // copiar a audio/ (archivos importados)
+
+        // Pistas de una separación: carpeta en la que se muestran y su origen.
+        juce::String folderId;
+        juce::String stemGroup;
+        juce::String stemId;
     };
 
     explicit ProjectManager (AudioEngine& engine);
@@ -75,7 +81,8 @@ public:
 
     /** Crea una pista vacía (por ejemplo, para grabar en ella) en la posición
         indicada, o al final si insertIndex < 0. */
-    std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName, int insertIndex = -1);
+    std::shared_ptr<AudioTrack> addEmptyTrack (const juce::String& baseName, int insertIndex = -1,
+                                               const juce::String& folderId = {});
 
     /** Inserta una copia de la pista (Pegar pista) en la posición indicada, o
         al final si insertIndex < 0. Si el nombre ya existe se añade "(copia)". */
@@ -89,6 +96,24 @@ public:
 
     /** Anota un cambio de nombre que ya se aplicó a la pista. */
     void trackRenamed (const std::shared_ptr<AudioTrack>& track, const juce::String& oldName);
+
+    //==========================================================================
+    // Carpetas de pistas (las crea la separación por IA)
+
+    const std::vector<TrackFolder>& getFolders() const noexcept    { return folders; }
+    const TrackFolder* findFolder (const juce::String& folderId) const;
+    void addFolder (TrackFolder folder);
+    void setFolderExpanded (const juce::String& folderId, bool expanded);
+
+    /** Pistas que se muestran en la carpeta, en orden. */
+    std::vector<std::shared_ptr<AudioTrack>> getFolderTracks (const juce::String& folderId) const;
+
+    /** Pistas que generó la separación de esa carpeta (estén dentro o no). */
+    std::vector<std::shared_ptr<AudioTrack>> getStemTracks (const juce::String& folderId) const;
+
+    /** Meter la pista en una carpeta, sacarla (folderId vacío) o cambiarla de
+        sitio, y dejarla en esa posición del mezclador. Se puede deshacer. */
+    void moveTrackToFolder (const std::shared_ptr<AudioTrack>& track, const juce::String& folderId, int mixerIndex);
 
     /** Pista en la que se está grabando (solo una; resalta su franja y la vista
         previa en directo). */
@@ -149,6 +174,7 @@ private:
         bool copyIntoProject = false;
         bool armed = false;
         juce::String undoName;              // vacío: no entra en el historial (abrir, recargar)
+        juce::String folderId, stemGroup, stemId;
     };
 
     using SourceMap = std::map<juce::String, std::shared_ptr<ClipSource>>;
@@ -170,6 +196,7 @@ private:
 
     AudioEngine& engine;
     Project project;
+    std::vector<TrackFolder> folders;
 
     // Se incrementa al cambiar de proyecto: las cargas en curso de un proyecto
     // anterior se descartan al terminar.

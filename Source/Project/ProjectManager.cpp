@@ -144,6 +144,46 @@ namespace
         int fromIndex, toIndex;
     };
 
+    /** Meter una pista en una carpeta, sacarla o moverla: carpeta y posición. */
+    class FolderMoveAction final : public juce::UndoableAction
+    {
+    public:
+        FolderMoveAction (AudioMixer& m, std::function<void()> changed, std::shared_ptr<AudioTrack> t,
+                          juce::String toFolder, int toIndex)
+            : mixer (m), onChanged (std::move (changed)), track (std::move (t)),
+              fromFolder (track->getFolderId()), targetFolder (std::move (toFolder)),
+              fromIndex (indexOfTrack (mixer, track.get())), targetIndex (toIndex)
+        {
+        }
+
+        bool perform() override     { return apply (targetFolder, targetIndex); }
+        bool undo() override        { return apply (fromFolder, fromIndex); }
+
+    private:
+        bool apply (const juce::String& folder, int index)
+        {
+            const auto current = indexOfTrack (mixer, track.get());
+
+            if (current < 0)
+                return false;
+
+            track->setFolderId (folder);
+            index = juce::jlimit (0, static_cast<int> (mixer.getTracks().size()) - 1, index);
+
+            if (current != index)
+                mixer.moveTrack (current, index);
+
+            onChanged();
+            return true;
+        }
+
+        AudioMixer& mixer;
+        std::function<void()> onChanged;
+        std::shared_ptr<AudioTrack> track;
+        juce::String fromFolder, targetFolder;
+        int fromIndex, targetIndex;
+    };
+
     /** Cambiar el nombre de una pista. */
     class RenameTrackAction final : public juce::UndoableAction
     {
@@ -188,6 +228,7 @@ void ProjectManager::newProject()
 {
     ++generation;
     undoManager.clearUndoHistory();
+    folders.clear();
     engine.getTransport().stop();
     engine.getMixer().removeAllTracks();
     engine.getMixer().getMasterVolume().resetToDefault();
@@ -254,6 +295,7 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
 
     project = std::move (loaded);
     project.createFolderStructure();
+    folders = document.folders;
 
     sendChangeMessage();
 
@@ -381,6 +423,9 @@ void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone, c
         request.name = track.name;
         request.copyIntoProject = track.copyIntoProject;
         request.undoName = undoName;
+        request.folderId = track.folderId;
+        request.stemGroup = track.stemGroup;
+        request.stemId = track.stemId;
         request.clips.push_back ({ track.file, track.startSeconds, 0.0, -1.0 });
         requests.push_back (std::move (request));
     }
@@ -388,9 +433,11 @@ void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone, c
     loadTracks (std::move (requests), std::move (onDone));
 }
 
-std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName, int insertIndex)
+std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& baseName, int insertIndex,
+                                                           const juce::String& folderId)
 {
     auto track = std::make_shared<AudioTrack> (createTrackName (baseName));
+    track->setFolderId (folderId);
     performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::add, engine.getMixer(),
                                                             [this] { notifyTracksEdited(); }, track, insertIndex),
                      "Añadir pista"_u8);
@@ -428,6 +475,75 @@ void ProjectManager::trackMoved (const std::shared_ptr<AudioTrack>& track, int f
         performUndoable (std::make_unique<MoveTrackAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
                                                             track, fromIndex, toIndex),
                          "Mover pista");
+}
+
+const TrackFolder* ProjectManager::findFolder (const juce::String& folderId) const
+{
+    for (const auto& folder : folders)
+        if (folder.id == folderId)
+            return &folder;
+
+    return nullptr;
+}
+
+void ProjectManager::addFolder (TrackFolder folder)
+{
+    folders.push_back (std::move (folder));
+    sendChangeMessage();
+}
+
+void ProjectManager::setFolderExpanded (const juce::String& folderId, bool expanded)
+{
+    for (auto& folder : folders)
+    {
+        if (folder.id == folderId && folder.expanded != expanded)
+        {
+            folder.expanded = expanded;
+            sendChangeMessage();
+        }
+    }
+}
+
+std::vector<std::shared_ptr<AudioTrack>> ProjectManager::getFolderTracks (const juce::String& folderId) const
+{
+    std::vector<std::shared_ptr<AudioTrack>> result;
+
+    for (const auto& track : engine.getMixer().getTracks())
+        if (folderId.isNotEmpty() && track->getFolderId() == folderId)
+            result.push_back (track);
+
+    return result;
+}
+
+std::vector<std::shared_ptr<AudioTrack>> ProjectManager::getStemTracks (const juce::String& folderId) const
+{
+    std::vector<std::shared_ptr<AudioTrack>> result;
+
+    for (const auto& track : engine.getMixer().getTracks())
+        if (folderId.isNotEmpty() && track->getStemGroup() == folderId)
+            result.push_back (track);
+
+    return result;
+}
+
+void ProjectManager::moveTrackToFolder (const std::shared_ptr<AudioTrack>& track, const juce::String& folderId, int mixerIndex)
+{
+    if (track == nullptr || ! containsTrack (engine.getMixer(), track.get()))
+        return;
+
+    const auto sameFolder = track->getFolderId() == folderId;
+
+    if (sameFolder && indexOfTrack (engine.getMixer(), track.get()) == mixerIndex)
+        return;
+
+    const auto name = sameFolder ? juce::String ("Mover pista")
+                    : folderId.isEmpty() ? juce::String ("Sacar de la carpeta")
+                    : track->getFolderId().isEmpty() ? juce::String ("Meter en la carpeta")
+                    : juce::String ("Mover a otra carpeta");
+
+    performUndoable (std::make_unique<FolderMoveAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
+                                                         track, folderId, mixerIndex),
+                     name);
 }
 
 void ProjectManager::trackRenamed (const std::shared_ptr<AudioTrack>& track, const juce::String& oldName)
@@ -735,6 +851,12 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
         if (! request.state.isVoid())
             track->applyState (request.state);
 
+        if (request.folderId.isNotEmpty())
+            track->setFolderId (request.folderId);
+
+        if (request.stemGroup.isNotEmpty())
+            track->setStem (request.stemGroup, request.stemId);
+
         if (request.armed)
             for (const auto& other : tracks)
                 other->setArmed (false);
@@ -819,6 +941,11 @@ ProjectDocument ProjectManager::describe() const
     ProjectDocument document;
     const auto& mixer = engine.getMixer();
     document.masterVolumeDb = mixer.getMasterVolume().get();
+
+    // Solo las carpetas que aún tienen pistas (dentro, o generadas por ellas).
+    for (const auto& folder : folders)
+        if (! getFolderTracks (folder.id).empty() || ! getStemTracks (folder.id).empty())
+            document.folders.push_back (folder);
 
     for (const auto& track : mixer.getTracks())
     {
