@@ -105,7 +105,17 @@ MainComponent::MainComponent (AudioEngine& audioEngine, ProjectManager& projectM
     {
         projects.clipsEdited (track, std::move (clipsBefore), actionName);
     };
-    trackList.onAddTrack = [this] (int insertIndex) { addTrack (insertIndex); };
+    trackList.onAddTrack = [this] (int insertIndex, const juce::String& folderId) { addTrack (insertIndex, folderId); };
+    trackList.onToggleFolder = [this] (const juce::String& folderId)
+    {
+        if (const auto* folder = projects.findFolder (folderId))
+            projects.setFolderExpanded (folderId, ! folder->expanded);
+    };
+    trackList.onToggleFolderWindow = [this] (const juce::String& folderId) { toggleFolderWindow (folderId); };
+    trackList.onTrackDropped = [this] (std::shared_ptr<AudioTrack> track, const juce::String& folderId, int mixerIndex)
+    {
+        projects.moveTrackToFolder (track, folderId, mixerIndex);
+    };
     trackList.onTracksReordered = [this] (std::shared_ptr<AudioTrack> track, int fromIndex, int toIndex)
     {
         projects.trackMoved (track, fromIndex, toIndex);
@@ -209,6 +219,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    updateFolders();
     trackList.refresh();
     mixer.repaint();        // el nombre de la pista puede haber cambiado (deshacer)
     updateWindowTitle();
@@ -300,7 +311,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int topLevelMenuIndex, const juc
         case 4:
         {
             addItem (menu, separateId, "Separar instrumentos", {}, hasTracks && ! aiBusy);
-            addItem (menu, showSeparationId, "Mostrar progreso de la separación"_u8, {}, aiBusy && separationWindow != nullptr);
+            addItem (menu, showSeparationId, "Mostrar progreso de la separación"_u8, {}, aiBusy && folderWindows.count (separatingFolderId) > 0);
             addItem (menu, cancelSeparationId, "Cancelar separación"_u8, {}, aiBusy);
             menu.addSeparator();
             menu.addSectionHeader ("Modelo");
@@ -705,13 +716,13 @@ int MainComponent::indexBelowSelectedTrack() const
     return -1;
 }
 
-void MainComponent::addTrack (int insertIndex)
+void MainComponent::addTrack (int insertIndex, const juce::String& folderId)
 {
     // Sin posición (Ctrl+T, menú): justo debajo de la pista seleccionada.
     if (insertIndex < 0)
         insertIndex = indexBelowSelectedTrack();
 
-    const auto track = projects.addEmptyTrack ("Pista", insertIndex);
+    const auto track = projects.addEmptyTrack ("Pista", insertIndex, folderId);
     trackList.refresh();
     trackList.selectTrack (track);
     statusBar.setMessage ("Pista añadida y seleccionada: pulsa R o el botón rojo para grabar en ella (Ctrl+Z la quita)."_u8);
@@ -1117,34 +1128,30 @@ void MainComponent::separateInstruments()
     SeparationRequest request { source->getSourceFile(), projects.createStemsFolderFor (*source) };
     std::weak_ptr<AudioTrack> weakSource = source;
 
+    // La separación, su carpeta de pistas y su ventana de ondas comparten un id.
+    const auto folderId = juce::Uuid().toString();
+    const auto expected = ai.getSeparator().getExpectedStems();
+
     const auto started = ai.start (std::move (request),
-                                   [safe = juce::Component::SafePointer<MainComponent> (this), weakSource]
+                                   [safe = juce::Component::SafePointer<MainComponent> (this), weakSource, folderId, expected]
                                    (const SeparationResult& result)
     {
         if (safe != nullptr)
-            safe->separationFinished (result, weakSource.lock());
+            safe->separationFinished (result, weakSource.lock(), folderId, expected);
     });
 
     if (! started)
         return;
 
     statusBar.setMessage ("Separando \"" + source->getName() + "\" con " + ai.getSeparator().getName() + "...");
+    separatingFolderId = folderId;
 
-    // Ventana con la animación: la esfera del color de la pista original y,
-    // según avanza, una esfera por cada pista que se va a generar.
+    // Ventana con la animación: el anillo del color de la pista original y,
+    // según avanza, la onda de cada pista que se va a generar.
     const auto& tracks = engine.getMixer().getTracks();
     const auto index = static_cast<int> (std::distance (tracks.begin(), std::find (tracks.begin(), tracks.end(), source)));
-    std::vector<SeparationView::Stem> stems;
-    const auto expected = ai.getSeparator().getExpectedStems();
-
-    for (int i = 0; i < expected.size(); ++i)
-    {
-        const auto name = stemDisplayName (expected[i]);
-        stems.push_back ({ name, trackColourFor (name, static_cast<int> (tracks.size()) + i) });
-    }
-
-    separationWindow = std::make_unique<SeparationWindow> (source->getName(), trackColourFor (source->getName(), index), std::move (stems));
-    auto& view = separationWindow->getView();
+    auto& window = createFolderWindow (folderId, source->getName(), trackColourFor (source->getName(), index), expected);
+    auto& view = window.getView();
 
     // El anillo de frecuencias dibuja la propia canción.
     if (const auto clips = source->getClips(); ! clips.empty() && clips.front().source != nullptr)
@@ -1153,34 +1160,152 @@ void MainComponent::separateInstruments()
     view.getProgress = [this] { return ai.getProgress(); };
     view.getStatus = [this] { return ai.getStatus(); };
     view.onCancel = [this] { ai.cancel(); };
-    separationWindow->present();
+    window.setName ("Separando instrumentos");
+    window.present();
 }
 
 void MainComponent::showSeparationWindow()
 {
-    if (separationWindow != nullptr)
-        separationWindow->present();
+    if (const auto found = folderWindows.find (separatingFolderId); found != folderWindows.end())
+        found->second->present();
 }
 
-void MainComponent::separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source)
+//==============================================================================
+SeparationWindow& MainComponent::createFolderWindow (const juce::String& folderId, const juce::String& name,
+                                                     juce::Colour colour, const juce::StringArray& stemIds)
 {
-    // Bien: la ventana muestra todas las pistas y "completada" un momento y
-    // se cierra sola. Cancelada o con error: se cierra ya.
-    if (separationWindow != nullptr)
+    std::vector<SeparationView::Stem> stems;
+
+    for (const auto& id : stemIds)
+    {
+        const auto stemName = stemDisplayName (id);
+        stems.push_back ({ stemName, trackColourFor (stemName, 0) });
+    }
+
+    auto window = std::make_unique<SeparationWindow> (name, colour, std::move (stems));
+    window->setName ("Ondas: " + name);
+
+    // Cada onda sigue a su pista: si se elimina desaparece; si se deshace, vuelve.
+    window->getView().isStemPresent = [this, folderId, stemIds] (int index)
+    {
+        return juce::isPositiveAndBelow (index, stemIds.size()) && isStemPresent (folderId, stemIds[index]);
+    };
+
+    // Cerrarla con la X actualiza el botón "Ondas" de la carpeta.
+    window->onVisibilityChanged = [safe = juce::Component::SafePointer<MainComponent> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->updateFolders(); });
+    };
+
+    auto& result = *window;
+    folderWindows[folderId] = std::move (window);
+    return result;
+}
+
+bool MainComponent::isStemPresent (const juce::String& folderId, const juce::String& stemId) const
+{
+    // Mientras separa o carga las pistas todavía no existen: se ven todas.
+    if (folderId == separatingFolderId || folderId == loadingStemsFolderId)
+        return true;
+
+    const auto& tracks = engine.getMixer().getTracks();
+    return std::any_of (tracks.begin(), tracks.end(), [&] (const auto& track)
+    {
+        return track->getStemGroup() == folderId && track->getStemId() == stemId;
+    });
+}
+
+void MainComponent::toggleFolderWindow (const juce::String& folderId)
+{
+    auto found = folderWindows.find (folderId);
+
+    if (found != folderWindows.end() && found->second->isVisible())
+    {
+        found->second->setVisible (false);
+        updateFolders();
+        return;
+    }
+
+    if (found == folderWindows.end())
+    {
+        const auto* folder = projects.findFolder (folderId);
+
+        if (folder == nullptr || projects.getStemTracks (folderId).empty())
+            return;
+
+        auto& window = createFolderWindow (folderId, folder->name, folder->colour, folder->stems);
+        window.getView().setFinished (true);
+
+        // El anillo, con el audio de la canción separada (si sigue en el proyecto).
+        for (const auto& track : engine.getMixer().getTracks())
+        {
+            for (const auto& clip : track->getClips())
+            {
+                if (clip.source != nullptr && clip.source->file == folder->sourceFile)
+                {
+                    const auto rate = clip.source->sampleRate;
+                    const auto length = folder->sourceLengthSeconds < 0.0 ? clip.source->getLength()
+                                                                           : std::llround (folder->sourceLengthSeconds * rate);
+                    window.getView().setSourceAudio (clip.source, std::llround (folder->sourceStartSeconds * rate), length);
+                    break;
+                }
+            }
+        }
+
+        found = folderWindows.find (folderId);
+    }
+
+    found->second->present();
+    updateFolders();
+}
+
+bool MainComponent::isFolderWindowOpen (const juce::String& folderId) const
+{
+    const auto found = folderWindows.find (folderId);
+    return found != folderWindows.end() && found->second->isVisible();
+}
+
+void MainComponent::updateFolders()
+{
+    // Las ventanas de carpetas que ya no existen o sin pistas de su separación
+    // se cierran (la de la separación en curso, no).
+    for (auto it = folderWindows.begin(); it != folderWindows.end();)
+    {
+        const auto& id = it->first;
+        const auto keep = id == separatingFolderId || id == loadingStemsFolderId
+                       || (projects.findFolder (id) != nullptr && ! projects.getStemTracks (id).empty());
+        it = keep ? std::next (it) : folderWindows.erase (it);
+    }
+
+    std::vector<TrackListView::FolderInfo> infos;
+
+    for (const auto& folder : projects.getFolders())
+        infos.push_back ({ folder.id, folder.name, folder.colour, folder.expanded,
+                           ! projects.getStemTracks (folder.id).empty(), isFolderWindowOpen (folder.id) });
+
+    trackList.setFolders (std::move (infos));
+}
+
+void MainComponent::separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source,
+                                        const juce::String& folderId, const juce::StringArray& expectedStems)
+{
+    separatingFolderId.clear();
+    const auto window = folderWindows.find (folderId);
+
+    // Bien: la ventana se queda (con todas las ondas) y ya pertenece a la
+    // carpeta de las pistas nuevas. Cancelada o con error: se cierra.
+    if (window != folderWindows.end())
     {
         if (result.status.wasOk() && ! result.cancelled)
         {
-            separationWindow->getView().setFinished (true);
-            juce::Timer::callAfterDelay (1800, [safe = juce::Component::SafePointer<MainComponent> (this),
-                                                window = separationWindow.get()]
-            {
-                if (safe != nullptr && safe->separationWindow.get() == window)
-                    safe->separationWindow.reset();
-            });
+            window->second->getView().setFinished (true);
+
+            if (source != nullptr)
+                window->second->setName ("Ondas: " + source->getName());
         }
         else
         {
-            separationWindow.reset();
+            folderWindows.erase (window);
         }
     }
 
@@ -1209,10 +1334,41 @@ void MainComponent::separationFinished (const SeparationResult& result, std::sha
                          / clips.front().source->sampleRate;
     }
 
+    // Carpeta con las pistas nuevas (antes de cargarlas, para que aparezcan
+    // ya dentro). Guarda lo que necesita su ventana de ondas.
+    TrackFolder folder;
+    folder.id = folderId;
+    folder.name = source != nullptr ? source->getName() : juce::String ("Separación"_u8);
+    folder.stems = expectedStems;
+
+    if (source != nullptr)
+    {
+        const auto& all = engine.getMixer().getTracks();
+        const auto index = static_cast<int> (std::distance (all.begin(), std::find (all.begin(), all.end(), source)));
+        folder.colour = trackColourFor (source->getName(), index);
+
+        if (const auto clips = source->getClips(); ! clips.empty() && clips.front().source != nullptr)
+        {
+            const auto rate = clips.front().source->sampleRate;
+            folder.sourceFile = clips.front().source->file;
+            folder.sourceStartSeconds = static_cast<double> (clips.front().sourceOffset) / rate;
+            folder.sourceLengthSeconds = static_cast<double> (clips.front().length) / rate;
+        }
+    }
+
+    projects.addFolder (std::move (folder));
+    loadingStemsFolderId = folderId;
+
     std::vector<ProjectManager::NewTrack> tracks;
 
     for (const auto& stem : result.stems)
-        tracks.push_back ({ stemDisplayName (stem.name), stem.file, startSeconds, false });
+    {
+        ProjectManager::NewTrack track { stemDisplayName (stem.name), stem.file, startSeconds, false };
+        track.folderId = folderId;
+        track.stemGroup = folderId;
+        track.stemId = stem.name;
+        tracks.push_back (std::move (track));
+    }
 
     const auto numStems = static_cast<int> (tracks.size());
     std::weak_ptr<AudioTrack> weakSource = source;
@@ -1222,6 +1378,9 @@ void MainComponent::separationFinished (const SeparationResult& result, std::sha
     {
         if (safe == nullptr)
             return;
+
+        safe->loadingStemsFolderId.clear();
+        safe->updateFolders();
 
         if (r.failed())
         {

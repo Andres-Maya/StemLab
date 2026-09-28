@@ -42,6 +42,11 @@ public:
         archivo en la ventana y abrir StemLab con un archivo ("Abrir con"). */
     void openProjectFile (const juce::File& file);
 
+    /** Abrir o cerrar la ventana de ondas de una carpeta de separación (botón
+        "Ondas" de la carpeta). Solo se abre si quedan pistas de esa separación. */
+    void toggleFolderWindow (const juce::String& folderId);
+    bool isFolderWindowOpen (const juce::String& folderId) const;
+
     /** settings (opcional) guarda la lista de proyectos recientes. */
     MainComponent (AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai,
                    juce::PropertiesFile* settings = nullptr);
@@ -79,7 +84,7 @@ private:
     void deleteSelection();
     void removeTrack (AudioTrack& track);
     /** insertIndex < 0: debajo de la pista seleccionada (o al final si no hay). */
-    void addTrack (int insertIndex = -1);
+    void addTrack (int insertIndex = -1, const juce::String& folderId = {});
 
     /** Justo debajo de la pista seleccionada, o -1 (al final) si no hay ninguna. */
     int indexBelowSelectedTrack() const;
@@ -110,8 +115,16 @@ private:
     void toggleRecording();
     void finishRecording();
     void separateInstruments();
-    void separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source);
+    void separationFinished (const SeparationResult& result, std::shared_ptr<AudioTrack> source,
+                             const juce::String& folderId, const juce::StringArray& expectedStems);
     void showSeparationWindow();
+
+    /** Pasa las carpetas a la lista de pistas y cierra las ventanas de ondas
+        de las que ya no tienen pistas de su separación. */
+    void updateFolders();
+    bool isStemPresent (const juce::String& folderId, const juce::String& stemId) const;
+    SeparationWindow& createFolderWindow (const juce::String& folderId, const juce::String& name, juce::Colour colour,
+                                          const juce::StringArray& stemIds);
     void showAbout();
 
     bool ensureIdle (const juce::String& action);
@@ -142,7 +155,11 @@ private:
     juce::PropertiesFile* settings = nullptr;
     juce::RecentlyOpenedFilesList recentProjects;
 
-    std::unique_ptr<SeparationWindow> separationWindow;   // animación mientras la IA separa
+    // Ventanas de ondas, una por carpeta de separación (la de la separación en
+    // curso también, con su id).
+    std::map<juce::String, std::unique_ptr<SeparationWindow>> folderWindows;
+    juce::String separatingFolderId;                // separación en marcha
+    juce::String loadingStemsFolderId;              // sus pistas se están cargando
 
     std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
     std::shared_ptr<AudioTrack> trackClipboard;     // copia de la pista copiada o cortada
