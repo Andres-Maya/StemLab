@@ -39,6 +39,10 @@ public:
     juce::Colour getColour() const noexcept                         { return colour; }
 
     void setSelected (bool shouldBeSelected);
+
+    /** Color de la carpeta en la que está (transparente = ninguna): se dibuja
+        como una franja a la izquierda de la cabecera. */
+    void setFolderColour (juce::Colour newColour);
     void setSelectedClip (juce::uint32 clipId)                      { waveform.setSelectedClip (clipId); }
     void setVisibleRange (double startSeconds, double lengthSeconds) { waveform.setVisibleRange (startSeconds, lengthSeconds); }
 
@@ -75,6 +79,7 @@ private:
 
     std::shared_ptr<AudioTrack> track;
     juce::Colour colour;
+    juce::Colour folderColour { juce::Colours::transparentBlack };
     bool selected = false;
 
     int grabY = 0;
