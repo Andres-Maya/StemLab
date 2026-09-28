@@ -7,6 +7,7 @@
 #include "TimeRuler.h"
 #include "TrackView.h"
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -22,6 +23,11 @@ namespace stemlab
     - Al pasar el ratón por una pista aparece un "+" en la esquina derecha de su
       borde inferior: añade una pista justo debajo.
     - Las pistas se reordenan arrastrando su cabecera.
+    - Carpetas (las crea la separación por IA): una cabecera con una flecha que
+      despliega o pliega sus pistas y el botón "Ondas", que abre o cierra la
+      ventana de ondas. Arrastrando una pista se mete en la carpeta (debajo de
+      la cabecera, entre sus pistas o sobre la cabecera plegada) o se saca
+      (encima de la cabecera o debajo del bloque). También desde su menú.
 
     Guarda la selección: pista seleccionada y, dentro de ella, el clip
     seleccionado (por su id).
@@ -36,6 +42,22 @@ public:
 
     /** Sincroniza las filas con las pistas del mezclador (conserva las existentes). */
     void refresh();
+
+    /** Lo que la lista necesita saber de cada carpeta. */
+    struct FolderInfo
+    {
+        juce::String id;
+        juce::String name;
+        juce::Colour colour;
+        bool expanded = true;
+        bool canShowWaves = false;      // quedan pistas de la separación: hay ondas que ver
+        bool wavesOpen = false;         // su ventana de ondas está abierta
+    };
+
+    void setFolders (std::vector<FolderInfo> newFolders);
+
+    /** Posición y tamaño de la cabecera de una carpeta (vacío si no se ve). */
+    juce::Rectangle<int> getFolderHeaderBounds (const juce::String& folderId) const;
 
     std::shared_ptr<AudioTrack> getSelectedTrack() const   { return selected.lock(); }
     juce::uint32 getSelectedClipId() const noexcept        { return selectedClip; }
@@ -62,7 +84,16 @@ public:
     /** La pista ya se movió en el mezclador (arrastre, Alt+flechas o menú). */
     std::function<void (std::shared_ptr<AudioTrack>, int fromIndex, int toIndex)> onTracksReordered;
     std::function<void (std::shared_ptr<AudioTrack>, const juce::String& oldName)> onTrackRenamed;
-    std::function<void (int insertIndex)> onAddTrack;       // -1 = al final
+    /** Añadir una pista en esa posición del mezclador (-1 = al final), dentro
+        de una carpeta si se pulsó el "+" de una de sus pistas. */
+    std::function<void (int insertIndex, const juce::String& folderId)> onAddTrack;
+
+    std::function<void (const juce::String& folderId)> onToggleFolder;         // desplegar / plegar
+    std::function<void (const juce::String& folderId)> onToggleFolderWindow;   // abrir / cerrar las ondas
+
+    /** Una pista se soltó (arrastre o menú): carpeta destino ("" = ninguna) y
+        posición en el mezclador. Quien la recibe la mueve (y lo anota para deshacer). */
+    std::function<void (std::shared_ptr<AudioTrack>, const juce::String& folderId, int mixerIndex)> onTrackDropped;
 
     // Menú de la cabecera: copiar, cortar y pegar pistas.
     std::function<void (std::shared_ptr<AudioTrack>)> onCopyTrack;
@@ -120,6 +151,41 @@ private:
         juce::Colour colour { Palette::accent };   // el de la pista en la que se graba
     };
 
+    /** Cabecera de una carpeta: flecha, icono, nombre y el botón "Ondas". */
+    struct FolderHeader final : public juce::Component
+    {
+        static constexpr int height = 32;
+
+        FolderHeader();
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void setInfo (const FolderInfo& newInfo, int memberCount);
+
+        FolderInfo info;
+        int members = 0;
+        juce::TextButton wavesButton;
+        std::function<void()> onToggle;
+        std::function<void()> onToggleWaves;
+    };
+
+    /** Lo que se ve en la lista, en orden: cabeceras de carpeta y pistas. */
+    struct Entry
+    {
+        FolderHeader* header = nullptr;
+        TrackView* row = nullptr;
+        juce::String folderId;          // la carpeta de la cabecera, o en la que está la pista
+    };
+
+    /** Dónde caería una pista al soltarla. */
+    struct DropSlot
+    {
+        int y = 0;                                  // línea de inserción (para elegir la más cercana)
+        size_t insertAt = 0;                        // antes de qué entrada (sin contar la arrastrada)
+        juce::String folderId;                      // carpeta destino ("" = fuera)
+        std::shared_ptr<AudioTrack> before;         // antes de esta pista; nulo = al final de la carpeta o de la lista
+    };
+
     /** Línea del cabezal, transparente a los clics. */
     struct Playhead final : public juce::Component
     {
@@ -132,6 +198,10 @@ private:
     void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
 
     int indexOf (const TrackView& view) const;
+    const FolderInfo* findFolder (const juce::String& folderId) const;
+    void rebuildEntries();
+    static int heightOf (const Entry& entry);
+    int mixerIndexAtEndOf (const juce::String& folderId, const std::shared_ptr<AudioTrack>& excluding) const;
     void showTrackMenu (TrackView& view);
     void reorderDrag (TrackView& view, int parentY, int grabY);
     void reorderEnd (TrackView& view);
@@ -161,13 +231,16 @@ private:
     TimeRuler ruler;
     juce::Viewport viewport;
 
-    std::vector<std::unique_ptr<TrackView>> rows;
+    std::vector<std::unique_ptr<TrackView>> rows;      // en el orden del mezclador
+    std::vector<FolderInfo> folders;
+    std::map<juce::String, std::unique_ptr<FolderHeader>> folderHeaders;
+    std::vector<Entry> entries;                         // lo que se ve, en orden
+    std::optional<DropSlot> drop;
     std::weak_ptr<AudioTrack> selected;
     juce::uint32 selectedClip = 0;
 
     int addBelowRow = -1;               // pista bajo la que está el "+"
     int draggingRow = -1;               // pista que se está arrastrando
-    int dropRow = -1;                   // posición donde caería
 
     // Línea de tiempo: duración total (contenido + margen) y tramo visible.
     double totalLength = 30.0;

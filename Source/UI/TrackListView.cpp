@@ -15,7 +15,8 @@ namespace
     constexpr double minimumVisibleSeconds = 0.25;     // zoom máximo: 0,25 s a lo ancho
     constexpr double zoomStep = 1.5;
 
-    enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId, copyId, cutId, pasteBelowId };
+    enum TrackMenuIds { renameId = 1, addBelowId, moveUpId, moveDownId, deleteId, copyId, cutId, pasteBelowId,
+                        leaveFolderId, intoFolderBaseId = 100 };
 }
 
 void TrackListView::Content::paint (juce::Graphics& g)
@@ -145,6 +146,87 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
     drawColumn();
 }
 
+//==============================================================================
+TrackListView::FolderHeader::FolderHeader()
+{
+    wavesButton.setButtonText ("Ondas");
+    wavesButton.setTooltip ("Abrir o cerrar la ventana de ondas de la separación"_u8);
+    wavesButton.onClick = [this] { if (onToggleWaves != nullptr) onToggleWaves(); };
+    addAndMakeVisible (wavesButton);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void TrackListView::FolderHeader::setInfo (const FolderInfo& newInfo, int memberCount)
+{
+    info = newInfo;
+    members = memberCount;
+    wavesButton.setEnabled (info.canShowWaves);
+    wavesButton.setToggleState (info.wavesOpen, juce::dontSendNotification);
+    wavesButton.setColour (juce::TextButton::buttonOnColourId, info.colour.withAlpha (0.8f));
+    repaint();
+}
+
+void TrackListView::FolderHeader::paint (juce::Graphics& g)
+{
+    auto header = getLocalBounds().removeFromLeft (TrackView::headerWidth).toFloat();
+
+    // Cabecera teñida del color de la carpeta y, a la derecha, una banda suave
+    // a lo largo de la línea de tiempo.
+    g.setColour (Palette::panel.interpolatedWith (info.colour, 0.14f));
+    g.fillRect (header);
+    g.setColour (info.colour.withAlpha (0.06f));
+    g.fillRect (getLocalBounds().withTrimmedLeft (TrackView::headerWidth));
+
+    g.setColour (info.colour);
+    g.fillRect (header.removeFromLeft (6.0f));
+
+    // Flecha: hacia abajo desplegada, hacia la derecha plegada.
+    const auto centreY = (float) getHeight() * 0.5f;
+    juce::Path arrow;
+
+    if (info.expanded)
+        arrow.addTriangle (14.0f, centreY - 3.0f, 24.0f, centreY - 3.0f, 19.0f, centreY + 3.5f);
+    else
+        arrow.addTriangle (16.0f, centreY - 5.0f, 16.0f, centreY + 5.0f, 22.5f, centreY);
+
+    g.setColour (Palette::text);
+    g.fillPath (arrow);
+
+    // Icono de carpeta (pestaña + cuerpo).
+    const juce::Rectangle<float> body (32.0f, centreY - 6.0f, 20.0f, 13.0f);
+    g.setColour (info.colour);
+    g.fillRoundedRectangle (body.withTrimmedRight (11.0f).translated (0.0f, -3.0f).withHeight (5.0f), 1.5f);
+    g.fillRoundedRectangle (body, 2.0f);
+
+    // Nombre y número de pistas.
+    const auto textArea = juce::Rectangle<float> (60.0f, 0.0f, (float) wavesButton.getX() - 66.0f, (float) getHeight());
+    g.setColour (Palette::text);
+    g.setFont (juce::FontOptions (13.5f, juce::Font::bold));
+    g.drawText (info.name, textArea.withTrimmedBottom ((float) getHeight() * 0.42f).withTrimmedTop (2.0f),
+                juce::Justification::bottomLeft, true);
+    g.setColour (Palette::textDim);
+    g.setFont (juce::FontOptions (11.5f));
+    g.drawText (juce::String (members) + (members == 1 ? " pista" : " pistas"),
+                textArea.withTrimmedTop ((float) getHeight() * 0.55f), juce::Justification::topLeft, true);
+
+    g.setColour (Palette::outline);
+    g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
+    g.drawVerticalLine (TrackView::headerWidth - 1, 0.0f, (float) getHeight());
+}
+
+void TrackListView::FolderHeader::resized()
+{
+    wavesButton.setBounds (TrackView::headerWidth - 8 - 64, (getHeight() - 22) / 2, 64, 22);
+}
+
+void TrackListView::FolderHeader::mouseUp (const juce::MouseEvent& event)
+{
+    // Clic en la cabecera: desplegar o plegar la carpeta.
+    if (! event.mods.isPopupMenu() && event.mouseWasClicked() && onToggle != nullptr)
+        onToggle();
+}
+
+//==============================================================================
 void TrackListView::Playhead::paint (juce::Graphics& g)
 {
     if (x >= 0)
@@ -166,15 +248,19 @@ TrackListView::TrackListView (AudioEngine& audioEngine)
     emptyAddButton.colour = Palette::accent;
     emptyAddButton.setTooltip ("Añadir una pista (Ctrl+T)"_u8);
     emptyAddButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
-    emptyAddButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack (-1); };
+    emptyAddButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack (-1, {}); };
     content.addAndMakeVisible (emptyAddButton);
 
     addBelowButton.setTooltip ("Añadir una pista debajo"_u8);
     addBelowButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     addBelowButton.onClick = [this]
     {
-        if (onAddTrack != nullptr && addBelowRow >= 0)
-            onAddTrack (addBelowRow + 1);
+        // El "+" de una pista de carpeta añade la nueva dentro de la carpeta.
+        if (onAddTrack != nullptr && juce::isPositiveAndBelow (addBelowRow, (int) rows.size()))
+        {
+            const auto& folderId = rows[(size_t) addBelowRow]->getTrack().getFolderId();
+            onAddTrack (addBelowRow + 1, findFolder (folderId) != nullptr ? folderId : juce::String());
+        }
     };
     content.addChildComponent (addBelowButton);
 
@@ -252,6 +338,7 @@ void TrackListView::refresh()
 
     // Las filas de pistas eliminadas se destruyen aquí (y liberan su pista).
     rows = std::move (newRows);
+    rebuildEntries();
     content.isEmpty = rows.empty();
     emptyAddButton.setVisible (rows.empty());
     addBelowButton.setVisible (false);
@@ -284,6 +371,124 @@ void TrackListView::refresh()
     layoutRows();
     updateTimeline();
     content.repaint();
+}
+
+//==============================================================================
+void TrackListView::setFolders (std::vector<FolderInfo> newFolders)
+{
+    folders = std::move (newFolders);
+
+    // Una cabecera por carpeta; las de carpetas que ya no existen se quitan.
+    for (auto it = folderHeaders.begin(); it != folderHeaders.end();)
+        it = findFolder (it->first) == nullptr ? folderHeaders.erase (it) : std::next (it);
+
+    for (const auto& folder : folders)
+    {
+        auto& header = folderHeaders[folder.id];
+
+        if (header == nullptr)
+        {
+            header = std::make_unique<FolderHeader>();
+            const auto id = folder.id;
+            header->onToggle = [this, id] { if (onToggleFolder != nullptr) onToggleFolder (id); };
+            header->onToggleWaves = [this, id] { if (onToggleFolderWindow != nullptr) onToggleFolderWindow (id); };
+            content.addChildComponent (*header);
+        }
+    }
+
+    rebuildEntries();
+    layoutRows();
+}
+
+const TrackListView::FolderInfo* TrackListView::findFolder (const juce::String& folderId) const
+{
+    if (folderId.isEmpty())
+        return nullptr;
+
+    for (const auto& folder : folders)
+        if (folder.id == folderId)
+            return &folder;
+
+    return nullptr;
+}
+
+juce::Rectangle<int> TrackListView::getFolderHeaderBounds (const juce::String& folderId) const
+{
+    const auto found = folderHeaders.find (folderId);
+    return found != folderHeaders.end() && found->second->isVisible() ? found->second->getBounds() : juce::Rectangle<int>();
+}
+
+void TrackListView::rebuildEntries()
+{
+    // Las pistas se ven en el orden del mezclador; las de una carpeta, juntas
+    // bajo su cabecera (donde está la primera), y ocultas si está plegada.
+    entries.clear();
+    std::vector<juce::String> shown;
+
+    for (auto& [id, header] : folderHeaders)
+        header->setVisible (false);
+
+    for (auto& row : rows)
+    {
+        const auto& folderId = row->getTrack().getFolderId();
+        const auto* folder = findFolder (folderId);
+
+        if (folder == nullptr)
+        {
+            row->setFolderColour (juce::Colours::transparentBlack);
+            row->setVisible (true);
+            entries.push_back ({ nullptr, row.get(), {} });
+            continue;
+        }
+
+        if (std::find (shown.begin(), shown.end(), folderId) != shown.end())
+            continue;
+
+        shown.push_back (folderId);
+        auto* header = folderHeaders[folderId].get();
+        const auto members = std::count_if (rows.begin(), rows.end(),
+                                            [&] (const auto& r) { return r->getTrack().getFolderId() == folderId; });
+        header->setInfo (*folder, static_cast<int> (members));
+        header->setVisible (true);
+        entries.push_back ({ header, nullptr, folderId });
+
+        for (auto& member : rows)
+        {
+            if (member->getTrack().getFolderId() != folderId)
+                continue;
+
+            member->setFolderColour (folder->colour);
+            member->setVisible (folder->expanded);
+
+            if (folder->expanded)
+                entries.push_back ({ nullptr, member.get(), folderId });
+        }
+    }
+}
+
+int TrackListView::heightOf (const Entry& entry)
+{
+    return entry.header != nullptr ? FolderHeader::height : TrackView::preferredHeight;
+}
+
+int TrackListView::mixerIndexAtEndOf (const juce::String& folderId, const std::shared_ptr<AudioTrack>& excluding) const
+{
+    // Posición en el mezclador (sin contar "excluding") justo después de la
+    // última pista de la carpeta; al final si no tiene ninguna.
+    int index = 0, afterLast = -1;
+
+    for (const auto& track : engine.getMixer().getTracks())
+    {
+        if (track == excluding)
+            continue;
+
+        ++index;
+
+        if (track->getFolderId() == folderId)
+            afterLast = index;
+    }
+
+    return afterLast >= 0 ? afterLast : index;
 }
 
 void TrackListView::selectTrack (const std::shared_ptr<AudioTrack>& track)
@@ -389,6 +594,25 @@ void TrackListView::showTrackMenu (TrackView& view)
     menu.addSeparator();
     menu.addItem (moveUpId, "Subir pista", index > 0);
     menu.addItem (moveDownId, "Bajar pista", index + 1 < static_cast<int> (rows.size()));
+
+    // Carpetas: sacar de la suya o meter en otra (de las que se ven).
+    const auto* current = findFolder (view.getTrack().getFolderId());
+    juce::PopupMenu into;
+
+    for (size_t i = 0; i < folders.size(); ++i)
+        if (&folders[i] != current && getFolderHeaderBounds (folders[i].id) != juce::Rectangle<int>())
+            into.addItem (intoFolderBaseId + (int) i, folders[i].name);
+
+    if (current != nullptr || into.getNumItems() > 0)
+    {
+        menu.addSeparator();
+
+        if (current != nullptr)
+            menu.addItem (leaveFolderId, "Sacar de la carpeta \"" + current->name + "\"");
+
+        menu.addSubMenu ("Meter en la carpeta", into, into.getNumItems() > 0);
+    }
+
     menu.addSeparator();
     menu.addItem (deleteId, "Eliminar pista...");
 
@@ -410,14 +634,31 @@ void TrackListView::showTrackMenu (TrackView& view)
         switch (result)
         {
             case renameId:      safe->rows[static_cast<size_t> (index)]->startRename(); break;
-            case addBelowId:    if (safe->onAddTrack != nullptr) safe->onAddTrack (index + 1); break;
+            case addBelowId:
+                if (safe->onAddTrack != nullptr)
+                    safe->onAddTrack (index + 1, safe->findFolder (track->getFolderId()) != nullptr ? track->getFolderId() : juce::String());
+                break;
             case moveUpId:      safe->moveTrack (index, index - 1); break;
             case moveDownId:    safe->moveTrack (index, index + 1); break;
             case deleteId:      if (safe->onDeleteRequested != nullptr) safe->onDeleteRequested (*track); break;
             case copyId:        if (safe->onCopyTrack != nullptr) safe->onCopyTrack (track); break;
             case cutId:         if (safe->onCutTrack != nullptr) safe->onCutTrack (track); break;
             case pasteBelowId:  if (safe->onPasteTrack != nullptr) safe->onPasteTrack (index + 1); break;
-            default:            break;
+
+            case leaveFolderId:
+                // Fuera, justo debajo de la carpeta.
+                if (safe->onTrackDropped != nullptr)
+                    safe->onTrackDropped (track, {}, safe->mixerIndexAtEndOf (track->getFolderId(), track));
+                break;
+
+            default:
+                if (result >= intoFolderBaseId && safe->onTrackDropped != nullptr
+                    && juce::isPositiveAndBelow (result - intoFolderBaseId, (int) safe->folders.size()))
+                {
+                    const auto folderId = safe->folders[(size_t) (result - intoFolderBaseId)].id;
+                    safe->onTrackDropped (track, folderId, safe->mixerIndexAtEndOf (folderId, track));
+                }
+                break;
         }
     });
 }
@@ -425,36 +666,113 @@ void TrackListView::showTrackMenu (TrackView& view)
 void TrackListView::reorderDrag (TrackView& view, int parentY, int grabY)
 {
     const auto from = indexOf (view);
-    const auto count = static_cast<int> (rows.size());
 
-    if (from < 0 || count < 2)
+    if (from < 0 || rows.size() < 2)
         return;
 
     draggingRow = from;
     addBelowButton.setVisible (false);
 
-    // La fila sigue al ratón...
-    const auto h = TrackView::preferredHeight;
-    const auto top = juce::jlimit (0, (count - 1) * h, parentY - grabY);
+    // Lo que se ve sin la pista arrastrada, colocado sin huecos.
+    std::vector<Entry> others;
+
+    for (const auto& entry : entries)
+        if (entry.row != &view)
+            others.push_back (entry);
+
+    std::vector<int> tops;
+    int total = 0;
+
+    for (const auto& entry : others)
+    {
+        tops.push_back (total);
+        total += heightOf (entry);
+    }
+
+    // La fila sigue al ratón.
+    const auto h = view.getHeight();
+    const auto top = juce::jlimit (0, total, parentY - grabY);
     view.setTopLeftPosition (0, top);
     view.toFront (false);
     playhead.toFront (false);
 
-    // ...y las demás se apartan dejando el hueco donde caería.
-    dropRow = juce::jlimit (0, count - 1, juce::roundToInt (static_cast<double> (top) / h));
-    int slot = 0;
-
-    for (int i = 0; i < count; ++i)
+    // Sitios donde puede caer: antes de cada pista o carpeta (fuera), justo
+    // bajo una cabecera, entre sus pistas y al final de su bloque (dentro),
+    // sobre una cabecera plegada (dentro) y al final de la lista.
+    const auto firstMember = [this, &view] (const juce::String& folderId) -> std::shared_ptr<AudioTrack>
     {
-        if (i == from)
-            continue;
+        for (const auto& row : rows)
+            if (row.get() != &view && row->getTrack().getFolderId() == folderId)
+                return row->getTrackPointer();
 
-        if (slot == dropRow)
-            ++slot;
+        return nullptr;
+    };
 
-        rows[static_cast<size_t> (i)]->setTopLeftPosition (0, slot * h);
-        ++slot;
+    std::vector<DropSlot> slots;
+    const auto count = others.size();
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        const auto& entry = others[i];
+        const auto entryHeight = heightOf (entry);
+
+        if (entry.header != nullptr)
+        {
+            slots.push_back ({ tops[i], i, {}, firstMember (entry.folderId) });
+
+            const auto* folder = findFolder (entry.folderId);
+            const auto hasMembersBelow = i + 1 < count && others[i + 1].row != nullptr && others[i + 1].folderId == entry.folderId;
+
+            if (folder != nullptr && folder->expanded)
+                slots.push_back ({ tops[i] + entryHeight, i + 1, entry.folderId,
+                                   hasMembersBelow ? others[i + 1].row->getTrackPointer() : nullptr });
+            else
+                slots.push_back ({ tops[i] + entryHeight / 2, i + 1, entry.folderId, nullptr });
+        }
+        else if (entry.folderId.isEmpty())
+        {
+            slots.push_back ({ tops[i], i, {}, entry.row->getTrackPointer() });
+        }
+        else
+        {
+            if (i > 0 && others[i - 1].header == nullptr)
+                slots.push_back ({ tops[i], i, entry.folderId, entry.row->getTrackPointer() });
+
+            const auto lastOfFolder = i + 1 == count || others[i + 1].header != nullptr || others[i + 1].folderId != entry.folderId;
+
+            if (lastOfFolder)
+                slots.push_back ({ tops[i] + entryHeight - 20, i + 1, entry.folderId, nullptr });
+        }
     }
+
+    slots.push_back ({ total, count, {}, nullptr });
+
+    // El más cercano al centro de la fila arrastrada.
+    const auto centre = top + h / 2;
+    const auto best = std::min_element (slots.begin(), slots.end(), [centre] (const DropSlot& a, const DropSlot& b)
+    {
+        return std::abs (a.y - centre) < std::abs (b.y - centre);
+    });
+
+    drop = *best;
+
+    // Las demás se apartan dejando el hueco; la arrastrada muestra la franja
+    // de la carpeta en la que caería.
+    int y = 0;
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (i == drop->insertAt)
+            y += h;
+
+        auto* component = others[i].header != nullptr ? static_cast<juce::Component*> (others[i].header)
+                                                      : static_cast<juce::Component*> (others[i].row);
+        component->setTopLeftPosition (0, y);
+        y += heightOf (others[i]);
+    }
+
+    const auto* target = findFolder (drop->folderId);
+    view.setFolderColour (target != nullptr ? target->colour : juce::Colours::transparentBlack);
 
     // Desplazar la lista si se arrastra cerca del borde.
     const auto inViewport = viewport.getLocalPoint (&content, juce::Point<int> (0, parentY));
@@ -463,12 +781,42 @@ void TrackListView::reorderDrag (TrackView& view, int parentY, int grabY)
 
 void TrackListView::reorderEnd (TrackView& view)
 {
-    const auto from = indexOf (view);
-    const auto to = dropRow;
+    const auto track = view.getTrackPointer();
+    const auto slot = drop;
     draggingRow = -1;
-    dropRow = -1;
+    drop.reset();
 
-    moveTrack (from, to);
+    if (! slot.has_value() || onTrackDropped == nullptr)
+    {
+        refresh();
+        return;
+    }
+
+    // Posición en el mezclador, contando sin la pista arrastrada.
+    int index = 0;
+
+    if (slot->before != nullptr)
+    {
+        for (const auto& other : engine.getMixer().getTracks())
+        {
+            if (other == slot->before)
+                break;
+
+            if (other != track)
+                ++index;
+        }
+    }
+    else if (slot->folderId.isNotEmpty())
+    {
+        index = mixerIndexAtEndOf (slot->folderId, track);
+    }
+    else
+    {
+        index = static_cast<int> (engine.getMixer().getTracks().size()) - 1;
+    }
+
+    onTrackDropped (track, slot->folderId, index);
+    refresh();
 }
 
 void TrackListView::updateAddButton()
@@ -487,11 +835,9 @@ void TrackListView::updateAddButton()
         {
             const auto mouse = content.getMouseXYRelative();
 
-            if (mouse.y >= 0)
-                row = mouse.y / TrackView::preferredHeight;
-
-            if (row >= static_cast<int> (rows.size()))
-                row = -1;
+            for (const auto& entry : entries)
+                if (entry.row != nullptr && entry.row->getBounds().contains (0, mouse.y))
+                    row = indexOf (*entry.row);
         }
     }
 
@@ -541,17 +887,22 @@ void TrackListView::resized()
 void TrackListView::layoutRows()
 {
     const auto width = viewport.getMaximumVisibleWidth();
-    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(),
-                                    static_cast<int> (rows.size()) * TrackView::preferredHeight);
+    int listHeight = 0;
 
+    for (const auto& entry : entries)
+        listHeight += heightOf (entry);
+
+    const auto height = juce::jmax (viewport.getMaximumVisibleHeight(), listHeight);
     content.setSize (width, height);
 
     int y = 0;
 
-    for (auto& row : rows)
+    for (const auto& entry : entries)
     {
-        row->setBounds (0, y, width, TrackView::preferredHeight);
-        y += TrackView::preferredHeight;
+        auto* component = entry.header != nullptr ? static_cast<juce::Component*> (entry.header)
+                                                  : static_cast<juce::Component*> (entry.row);
+        component->setBounds (0, y, width, heightOf (entry));
+        y += heightOf (entry);
     }
 
     // Sin pistas, el "+" va arriba del todo, en la zona de cabeceras.
@@ -689,7 +1040,7 @@ void TrackListView::updateRecordingLane()
 
     if (engine.isRecording())
         for (auto& row : rows)
-            if (row->getTrack().isArmed())
+            if (row->getTrack().isArmed() && row->isVisible())
                 targetRow = row.get();
 
     if (targetRow == nullptr)
