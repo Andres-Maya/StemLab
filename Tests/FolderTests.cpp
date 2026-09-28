@@ -492,6 +492,81 @@ namespace
         root.deleteRecursively();
         outside.deleteFile();
     }
+
+    void testRealSeparationLayout()
+    {
+        section ("Carpeta del proyecto: separar una grabación en un proyecto guardado");
+
+        AudioEngine engine;
+        ProjectManager projects (engine);
+        const auto& tracks = engine.getMixer().getTracks();
+
+        const auto root = outputFolder().getChildFile ("ProyectoSeparado");
+        root.deleteRecursively();
+        CHECK (projects.saveAs (root).wasOk(), "Guardar como");
+
+        // Grabar una toma (como Grabacion4.wav) y separarla: los stems van a
+        // stems/<nombre de la toma>/, como hace DemucsSeparator.
+        const auto take = writeConstantWav (projects.createRecordingFile(), 44100.0, 1.0, 0.2f);
+        auto done = false;
+        projects.addRecording ({ take, 0, 0, 44100.0 }, {}, [&] (juce::Result) { done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        const auto song = tracks.back();
+        const auto output = projects.createStemsFolderFor (*song);
+        CHECK (output == root.getChildFile ("stems").getChildFile (take.getFileNameWithoutExtension()),
+               "la separación escribe en stems/<nombre de la toma>/");
+
+        TrackFolder folder;
+        folder.id = "separacion-real";
+        folder.name = song->getName();
+        folder.stems = fourStems;
+        folder.sourceFile = take;
+        projects.addFolder (folder);
+
+        std::vector<ProjectManager::NewTrack> stems;
+
+        for (const auto& stem : fourStems)
+        {
+            ProjectManager::NewTrack track { stemDisplayName (stem), writeConstantWav (output.getChildFile (stem + ".wav"), 44100.0, 1.0, 0.1f),
+                                             0.0, false };
+            track.folderId = folder.id;
+            track.stemGroup = folder.id;
+            track.stemId = stem;
+            stems.push_back (std::move (track));
+        }
+
+        done = false;
+        projects.addTracks (std::move (stems), [&] (juce::Result) { done = true; }, "Separar instrumentos");
+        runLoopUntil ([&] { return done; }, 10000);
+
+        projects.save();
+        const auto json = root.getChildFile ("ProyectoSeparado.stemlab").loadFileAsString();
+        CHECK (output.getNumberOfChildFiles (juce::File::findFiles) == 4 && take.existsAsFile()
+                   && json.contains ("stems/" + output.getFileName() + "/vocals.wav"),
+               "al guardar, los 4 stems siguen en stems/<toma>/ y el .stemlab los usa");
+
+        // Eliminar la carpeta, guardar y recuperarla: sus archivos vuelven en
+        // cuanto se deshace (sin esperar a guardar otra vez).
+        projects.removeFolder (folder.id);
+        projects.save();
+        CHECK (! output.exists(), "eliminar la carpeta y guardar quita sus stems");
+        projects.undo();
+        CHECK (output.getNumberOfChildFiles (juce::File::findFiles) == 4
+                   && projects.getFolderTracks (folder.id).front()->getSourceFile().isAChildOf (output),
+               "Ctrl+Z devuelve los stems a stems/<toma>/ al momento");
+
+        // Cerrar sin guardar tras deshacer: el proyecto guardado sigue coherente.
+        projects.newProject();
+        done = false;
+        juce::Result opened = juce::Result::ok();
+        projects.openProject (root, [&] (juce::Result r) { opened = r; done = true; });
+        runLoopUntil ([&] { return done; }, 10000);
+        CHECK (done && opened.wasOk() && tracks.size() == 1 && tracks.front()->getSourceFile() == take,
+               "el proyecto guardado (sin la carpeta) se abre con todo su audio");
+
+        projects.newProject();
+        root.deleteRecursively();
+    }
 }
 
 void runFolderTests()
@@ -500,5 +575,6 @@ void runFolderTests()
     testFolderList();
     testFolderWindow();
     testProjectFolderOnDisk();
+    testRealSeparationLayout();
 }
 }
