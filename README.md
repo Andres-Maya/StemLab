@@ -163,9 +163,10 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
 2. **IA → Separar instrumentos**. Se abre una ventana con la separación en marcha:
    - En el centro se ve el **porcentaje** de la separación.
    - Lo rodea un **anillo de frecuencias** con el resplandor del color de la pista que se separa. Dibuja la propia canción, recorriéndola en tiempo real: es una línea blanca que forma un círculo y se deforma con picos donde hay golpes, voces o platillos, con puntos de luz en los picos más altos, y gira despacio.
-   - Según avanza, salen del centro las pistas que se van a generar (Voz, Batería, Bajo…). Cada una es una animación del color de esa pista (ondas, órbitas, arcos…) con su nombre dentro, y se une al anillo con una línea de partículas. Con 4 pistas aparecen al 20, 40, 60 y 80 %.
+   - Según avanza, sale del centro la **onda** de cada pista que se va a generar (Voz, Batería, Bajo…). Cada onda es una animación del color de esa pista (ondas, órbitas, arcos…), unida al anillo con una línea de partículas. Con 4 pistas aparecen al 20, 40, 60 y 80 %.
    - **Cancelar separación** la detiene. Cerrar la ventana solo la oculta: la separación sigue. En la barra de estado aparecen el porcentaje y **Ver progreso**, para volver a abrirla (también en **IA → Mostrar progreso de la separación**).
-   - Al terminar aparecen todas las pistas y la ventana se cierra sola.
+   - Al terminar aparecen todas las ondas y la ventana **se queda abierta**. Las pistas nuevas quedan dentro de una **carpeta** con el nombre de la canción (ver "Pistas").
+   - La ventana de ondas se puede abrir mientras exista alguna pista de esa separación. Si eliminas una pista, su onda desaparece; si lo deshaces, vuelve.
 
    El modelo se elige en el mismo menú:
    - `htdemucs`: 4 pistas.
@@ -195,6 +196,12 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
    - **Mover:** arrastra la cabecera (nombre o zona vacía) arriba o abajo, o usa **Alt+↑ / Alt+↓**.
    - **Cambiar el nombre:** doble clic en el nombre, **F2**, o clic derecho en la cabecera.
    - **Eliminar:** la **×** de cada pista, o clic en su cabecera y **Supr** / **Retroceso**, tras pedir confirmación. **Ctrl+Z** la recupera con sus fragmentos, volumen y efectos.
+   - **Carpetas:** la separación deja sus pistas dentro de una carpeta.
+     - Su cabecera muestra una flecha, el nombre de la canción y cuántas pistas tiene. Un clic la **despliega o pliega**.
+     - El botón **Ondas**, al lado, abre y cierra la ventana de ondas de esa separación.
+     - Para **meter** una pista, arrástrala justo debajo de la cabecera, entre sus pistas, al final del bloque o sobre la cabecera si está plegada. Para **sacarla**, arrástrala por encima de la cabecera o por debajo del bloque. Mientras la arrastras, lleva la franja del color de la carpeta si va a quedar dentro.
+     - También desde el clic derecho de la pista: **Sacar de la carpeta** y **Meter en la carpeta ▸**.
+     - Una pista sacada de la carpeta conserva su onda. Todo se puede deshacer con **Ctrl+Z**, y las carpetas (plegadas o no) se guardan en el `.stemlab`.
    - **Copiar, cortar y pegar pistas:** haz clic en la cabecera de la pista (así no queda ningún fragmento seleccionado) y pulsa **Ctrl+C** o **Ctrl+X**. **Ctrl+V** pega una copia debajo de la pista seleccionada, con sus fragmentos, volumen, paneo y efectos. Si el nombre ya existe, se añade "(copia)". También está en el menú **Editar** y en el clic derecho de la cabecera.
    - Con un fragmento seleccionado, **Ctrl+C / Ctrl+X** actúan sobre el fragmento. **Ctrl+V** pega siempre lo último que copiaste, sea un fragmento o una pista.
 7. **Zoom y desplazamiento:**
@@ -249,7 +256,7 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
