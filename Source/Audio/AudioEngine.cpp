@@ -339,12 +339,20 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     if (playing)
     {
+        const auto end = mixer.getContentLength();
+
+        // Sin audio (ninguna pista, o todas vacías) no hay nada que reproducir:
+        // el cabezal se queda donde está. Al grabar sí avanza.
+        if (! recorder.isRecording() && end <= 0)
+        {
+            transport.pause();
+            return;
+        }
+
         transport.advance (numSamples);
 
         // Fin de la canción: parar y volver al inicio (salvo si se está grabando).
-        const auto end = mixer.getContentLength();
-
-        if (! recorder.isRecording() && end > 0 && blockStart + numSamples >= end)
+        if (! recorder.isRecording() && blockStart + numSamples >= end)
             transport.stop();
     }
 }
