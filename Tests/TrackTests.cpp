@@ -184,6 +184,11 @@ namespace
 
             CHECK (list != nullptr, "la ventana contiene la lista de pistas");
 
+            // Espacio sin ninguna pista: no hay nada que reproducir.
+            window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
+            CHECK (! engine.getTransport().isPlaying() && engine.getTransport().getPosition() == 0,
+                   "Espacio sin pistas no reproduce (el cabezal no se mueve)");
+
             // El caso del error, con las teclas: Ctrl+T, eliminar, Ctrl+T, Ctrl+Z.
             press ('t');
             const auto first = tracks.front();
