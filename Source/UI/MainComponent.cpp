@@ -1081,6 +1081,13 @@ void MainComponent::togglePlayPause()
         return;
     }
 
+    // Sin audio no hay nada que reproducir (el cabezal no se movería).
+    if (! engine.getTransport().isPlaying() && engine.getMixer().getContentLength() <= 0)
+    {
+        statusBar.setMessage ("No hay audio que reproducir: importa una canción o graba primero."_u8);
+        return;
+    }
+
     engine.getTransport().togglePlayPause();
 }
 
