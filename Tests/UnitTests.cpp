@@ -244,6 +244,80 @@ namespace
         CHECK (! t.isPlaying() && t.getPosition() == 0, "stop vuelve al inicio");
     }
 
+    /** Tarjeta de sonido de mentira: solo lo que el motor consulta al arrancar. */
+    struct FakeDevice final : public juce::AudioIODevice
+    {
+        FakeDevice() : juce::AudioIODevice ("Prueba", "Prueba") {}
+
+        juce::StringArray getOutputChannelNames() override             { return { "L", "R" }; }
+        juce::StringArray getInputChannelNames() override              { return {}; }
+        juce::Array<double> getAvailableSampleRates() override         { return { 48000.0 }; }
+        juce::Array<int> getAvailableBufferSizes() override            { return { 512 }; }
+        int getDefaultBufferSize() override                            { return 512; }
+        juce::String open (const juce::BigInteger&, const juce::BigInteger&, double, int) override { return {}; }
+        void close() override                                          {}
+        bool isOpen() override                                         { return true; }
+        void start (juce::AudioIODeviceCallback*) override             {}
+        void stop() override                                           {}
+        bool isPlaying() override                                      { return true; }
+        juce::String getLastError() override                           { return {}; }
+        int getCurrentBufferSizeSamples() override                     { return 512; }
+        double getCurrentSampleRate() override                         { return 48000.0; }
+        int getCurrentBitDepth() override                              { return 24; }
+        juce::BigInteger getActiveOutputChannels() const override      { return 3; }
+        juce::BigInteger getActiveInputChannels() const override       { return 0; }
+        int getOutputLatencyInSamples() override                       { return 0; }
+        int getInputLatencyInSamples() override                        { return 0; }
+    };
+
+    void testPlayWithoutAudio()
+    {
+        section ("Audio: reproducir sin audio");
+
+        AudioEngine engine;
+        FakeDevice device;
+        // El motor es el callback del dispositivo (herencia privada): la prueba
+        // hace de tarjeta de sonido y le pide bloques directamente.
+        auto& callback = (juce::AudioIODeviceCallback&) engine;
+        callback.audioDeviceAboutToStart (&device);
+
+        juce::AudioBuffer<float> output (2, 512);
+        const auto runBlocks = [&] (int count)
+        {
+            for (int i = 0; i < count; ++i)
+                callback.audioDeviceIOCallbackWithContext (nullptr, 0, output.getArrayOfWritePointers(), 2, 512, {});
+        };
+
+        auto& transport = engine.getTransport();
+        transport.setPosition (1000);
+        transport.play();
+        runBlocks (10);
+        CHECK (! transport.isPlaying() && transport.getPosition() == 1000,
+               "sin pistas, Play no mueve el cabezal (se queda en su sitio)");
+
+        // Una pista vacía tampoco tiene nada que reproducir.
+        auto empty = std::make_shared<AudioTrack> ("Vacía"_u8);
+        engine.getMixer().addTrack (empty);
+        transport.play();
+        runBlocks (10);
+        CHECK (! transport.isPlaying() && transport.getPosition() == 1000, "con una pista vacía, tampoco");
+
+        // Con audio avanza, y si se quita todo mientras suena, se detiene ahí.
+        auto track = std::make_shared<AudioTrack> ("Audio");
+        track->setClips ({ makeClip (makeSource (48000, 0.1f), 0) });
+        engine.getMixer().addTrack (track);
+        transport.play();
+        runBlocks (4);
+        CHECK (transport.isPlaying() && transport.getPosition() == 1000 + 4 * 512, "con audio, el cabezal avanza");
+
+        engine.getMixer().removeTrack (track.get());
+        runBlocks (4);
+        CHECK (! transport.isPlaying() && transport.getPosition() == 1000 + 4 * 512,
+               "si se elimina todo el audio mientras suena, se pausa donde estaba");
+
+        callback.audioDeviceStopped();
+    }
+
     void testClips()
     {
         section ("Edición de clips: dividir, recortar, mover, eliminar");
@@ -542,6 +616,7 @@ void runUnitTests()
     testUtils();
     testEffects();
     testMixerAndTransport();
+    testPlayWithoutAudio();
     testClips();
     testLoaderAndRecorder();
     testProjects();
