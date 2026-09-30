@@ -169,8 +169,14 @@ finally {
 Write-Step '4/4 Crear el instalador'
 
 Copy-Item $exe $stage
+
+# Con ella, el instalador no deja elegir una carpeta con la que alguna ruta
+# pasaría del límite de Windows (MAX_PATH).
+$longestPath = (Get-ChildItem $stage -Recurse -File |
+    ForEach-Object { $_.FullName.Length - $stage.Length - 1 } | Measure-Object -Maximum).Maximum
+
 $iscc = Find-InnoSetup
-Invoke-Native $iscc @('/Qp', "/DStagingDir=$stage", "/O$out", (Join-Path $PSScriptRoot 'StemLab.iss'))
+Invoke-Native $iscc @('/Qp', "/DStagingDir=$stage", "/DLongestPath=$longestPath", "/O$out", (Join-Path $PSScriptRoot 'StemLab.iss'))
 
 $setup = Get-Item (Join-Path $out 'StemLab-Setup.exe')
 $setupHash = (Get-FileHash -Algorithm SHA256 -Path $setup.FullName).Hash
