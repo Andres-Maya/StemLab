@@ -23,24 +23,29 @@ PythonEnvironment PythonEnvironment::find (const juce::String& scriptName)
         }
     }
 
+    const auto fromEnvironment = juce::SystemStats::getEnvironmentVariable ("STEMLAB_PYTHON", {});
+    result.pythonCommand = fromEnvironment.isNotEmpty() ? fromEnvironment : interpreterIn (result.scriptsFolder);
+    return result;
+}
+
+juce::String PythonEnvironment::interpreterIn (const juce::File& scriptsFolder)
+{
+    // Primero el entorno virtual (desarrollo) y después el Python autónomo con
+    // los paquetes dentro (instalación): en el repositorio, runtime/ es solo la
+    // base del entorno virtual y no tiene Demucs.
    #if JUCE_WINDOWS
-    const auto venvPython = result.scriptsFolder.getChildFile (".venv/Scripts/python.exe");
+    const juce::StringArray candidates { ".venv/Scripts/python.exe", "runtime/python.exe" };
     const juce::String systemPython ("python");
    #else
-    const auto venvPython = result.scriptsFolder.getChildFile (".venv/bin/python3");
+    const juce::StringArray candidates { ".venv/bin/python3", "runtime/bin/python3" };
     const juce::String systemPython ("python3");
    #endif
 
-    const auto fromEnvironment = juce::SystemStats::getEnvironmentVariable ("STEMLAB_PYTHON", {});
+    for (const auto& candidate : candidates)
+        if (const auto python = scriptsFolder.getChildFile (candidate); python.existsAsFile())
+            return python.getFullPathName();
 
-    if (fromEnvironment.isNotEmpty())
-        result.pythonCommand = fromEnvironment;
-    else if (venvPython.existsAsFile())
-        result.pythonCommand = venvPython.getFullPathName();
-    else
-        result.pythonCommand = systemPython;
-
-    return result;
+    return systemPython;
 }
 
 juce::StringArray PythonEnvironment::commandFor (const juce::String& scriptName) const

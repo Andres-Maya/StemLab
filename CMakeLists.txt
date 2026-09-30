@@ -6,10 +6,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Runtime de C++ estático (MSVC): StemLab.exe no depende de las DLL del
+# "Visual C++ Redistributable", así funciona en un Windows recién instalado
+# (el instalador solo lleva el ejecutable). Antes de JUCE y de los targets.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # ----------------------------------------------------------------------------
 # JUCE
 # Por defecto se descarga automáticamente la versión fijada. Si ya tienes una
-# copia local: cmake --preset x64-debug -DSTEMLAB_JUCE_DIR=C:/ruta/a/JUCE
+# copia local: cmake --preset vs2026 -DSTEMLAB_JUCE_DIR=C:/ruta/a/JUCE
 # ----------------------------------------------------------------------------
 set(STEMLAB_JUCE_DIR "" CACHE PATH "Ruta a una copia local de JUCE (opcional)")
 

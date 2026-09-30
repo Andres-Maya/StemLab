@@ -9,7 +9,8 @@
 #include <thread>
 
 // Pruebas que ejecutan Python (--python): exportar a MP3 con lameenc y separar
-// instrumentos con Demucs. Necesitan el entorno python/.venv (ver README.md).
+// instrumentos con Demucs. Necesitan python/.venv u otro Python con Demucs en
+// STEMLAB_PYTHON (así las ejecuta installer/build-installer.ps1; ver README.md).
 
 namespace stemlab::test
 {
@@ -120,7 +121,8 @@ namespace
         section ("IA: DemucsSeparator (C++ -> Python -> Demucs)");
 
         const auto settings = DemucsSeparator::findDefaultSettings();
-        CHECK (settings.pythonCommand.contains (".venv"), "encuentra el entorno virtual: " << settings.pythonCommand);
+        CHECK (juce::File::isAbsolutePath (settings.pythonCommand) && juce::File (settings.pythonCommand).existsAsFile(),
+               "usa un Python concreto (.venv, runtime/ o STEMLAB_PYTHON), no el del PATH: " << settings.pythonCommand);
         CHECK (settings.scriptFile.existsAsFile(), "encuentra el script");
 
         // Una "canción" sintética de 8 s (bombo, bajo, acordes, platillos).

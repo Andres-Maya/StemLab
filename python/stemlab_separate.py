@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """StemLab: separación de instrumentos con Demucs.
 
-StemLab (C++) ejecuta este script como un proceso externo:
+StemLab (C++) y el servidor de StemLab Web ejecutan este mismo script como
+un proceso externo (los dos proyectos llevan una copia idéntica):
 
     python -u -X utf8 stemlab_separate.py --input cancion.mp3 --output stems/cancion
 
 El script solo hace la parte de IA: cargar el modelo, preprocesar, inferir y
-escribir un WAV (float 32) por instrumento. Se comunica con C++ por stdout con
-líneas que empiezan por "@@":
+escribir un archivo por instrumento: WAV float 32 (por defecto) o, con
+--format flac, FLAC de 24 bits (la mitad de tamaño: la web los descarga así).
+Un stem que pase de 0 dBFS se escribe siempre en WAV float para no recortarlo.
+Se comunica por stdout con líneas que empiezan por "@@":
 
     @@STATUS <texto>          mensaje para la barra de estado
     @@PROGRESS <0..1>         progreso global
@@ -48,6 +51,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--shifts", type=int, default=1,
                         help="pasadas con desplazamiento aleatorio: más calidad, más lento")
     parser.add_argument("--overlap", type=float, default=0.25)
+    parser.add_argument("--format", default="wav", choices=["wav", "flac"],
+                        help="wav (float 32) o flac (24 bits; WAV float si el stem pasa de 0 dBFS)")
     parser.add_argument("--ffmpeg", default="ffmpeg",
                         help="FFmpeg para formatos que libsndfile no lee (m4a, aac...)")
     parser.add_argument("--check", action="store_true", help="comprueba el entorno y termina")
@@ -184,9 +189,15 @@ def separate(args: argparse.Namespace) -> None:
     order = {name: i for i, name in enumerate(STEM_ORDER)}
 
     for name in sorted(names, key=lambda n: order.get(n, len(STEM_ORDER))):
-        path = args.output / f"{name}.wav"
         data = sources[names.index(name)].cpu().numpy().T
-        sf.write(str(path), data, model.samplerate, subtype="FLOAT")
+
+        if args.format == "flac" and float(abs(data).max()) <= 1.0:
+            path = args.output / f"{name}.flac"
+            sf.write(str(path), data, model.samplerate, format="FLAC", subtype="PCM_24")
+        else:
+            path = args.output / f"{name}.wav"
+            sf.write(str(path), data, model.samplerate, subtype="FLOAT")
+
         emit("STEM", f"{name}\t{path}")
 
     emit("PROGRESS", "1")
@@ -231,9 +242,9 @@ def main() -> int:
         return 0
     except ModuleNotFoundError as error:
         emit("ERROR", f"Falta el paquete de Python '{error.name}'. "
-                      "Instala las dependencias: pip install -r python/requirements.txt")
+                      "Instala las dependencias de requirements.txt (ver README.md).")
         return 2
-    except Exception as error:  # noqa: BLE001 - se informa a C++
+    except Exception as error:  # noqa: BLE001 - se informa a quien lo ejecuta
         emit("ERROR", f"{type(error).__name__}: {error}".replace("\n", "\\n"))
         return 1
 

@@ -221,8 +221,11 @@ void AudioEngine::updateDevice()
         error = deviceManager.setAudioDeviceSetup (setup, true);
     }
 
+    // Entre llaves: en Release DBG no hace nada (sin ellas, aviso C4390).
     if (error.isNotEmpty())
+    {
         DBG ("No se pudo abrir el dispositivo de audio: " << error);
+    }
 }
 
 //==============================================================================
