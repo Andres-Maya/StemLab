@@ -1,0 +1,53 @@
+# Instalador de Windows: compila StemLab, lo prueba (también la separación con
+# Demucs) y genera StemLab-Setup.exe con installer/build-installer.ps1.
+#
+# - Al subir una etiqueta de versión (git tag v0.1.0 && git push origin v0.1.0)
+#   lo publica en la release de GitHub de esa etiqueta. La web enlaza siempre
+#   a la última: /releases/latest/download/StemLab-Setup.exe
+# - Desde la pestaña Actions (Run workflow): solo lo deja como artefacto.
+name: Instalador de Windows
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress --yes
+
+      - name: Compilar, probar y crear el instalador
+        shell: pwsh
+        run: ./installer/build-installer.ps1
+
+      - name: Guardar el instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: StemLab-Setup
+          path: out/installer/StemLab-Setup.exe
+          if-no-files-found: error
+
+      - name: Publicar en la release de la etiqueta
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # La etiqueta tiene que coincidir con la versión de CMakeLists.txt.
+          $version = (Get-Item out/installer/stage/StemLab.exe).VersionInfo.ProductVersion
+          if ("v$version" -ne $env:TAG) { throw "La etiqueta $env:TAG no coincide con la versión de StemLab ($version)." }
+
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create $env:TAG --title "StemLab $version" --generate-notes }
+          gh release upload $env:TAG out/installer/StemLab-Setup.exe --clobber

@@ -10,6 +10,11 @@ editar cada pista, grabar nuevas pistas, aplicar efectos y mezclar**.
 Archivo/Grabación → Gain → Saturación → EQ → Compresor → Limiter → Mixer → Salida
 ```
 
+**Para usarlo sin compilar:** descarga `StemLab-Setup.exe` de las
+[releases](https://github.com/Andres-Maya/StemLab/releases/latest) (también desde el botón
+**StemLab para Windows** de StemLab Web). Lleva Python y Demucs: la separación funciona sin
+configurar nada (ver "Instalador de Windows").
+
 ---
 
 ## Arquitectura
@@ -41,6 +46,11 @@ python/
   stemlab_separate.py               Demucs: carga, preprocesado, inferencia, stems
   stemlab_encode_mp3.py             codifica a MP3 la mezcla exportada (LAME)
 Tests/                              pruebas automáticas (ver "Pruebas")
+installer/
+  build-installer.ps1               compila, prueba y genera StemLab-Setup.exe
+  StemLab.iss                       el instalador (Inno Setup)
+  requirements.lock.txt             versiones exactas del Python del instalador
+.github/workflows/installer.yml     publica el instalador al crear una versión (v0.1.0...)
 ```
 
 ### Reglas de hilos (lo más importante del diseño)
@@ -82,7 +92,7 @@ y lee por stdout líneas con este protocolo:
 @@ERROR <mensaje>            (y código de salida != 0)
 ```
 
-Al terminar, C++ carga los `*.wav` de la carpeta de salida como pistas nuevas y silencia la pista original. Para cambiar de modelo basta con implementar otra `AudioSeparator` (otro script, ONNX Runtime en C++…), sin tocar la UI ni el motor.
+Al terminar, C++ carga los `*.wav` de la carpeta de salida como pistas nuevas y silencia la pista original. El servidor de StemLab Web usa una copia idéntica del script (con `--format flac`, para descargar los stems más rápido). Para cambiar de modelo basta con implementar otra `AudioSeparator` (otro script, ONNX Runtime en C++…), sin tocar la UI ni el motor.
 
 ### Formato de proyecto
 
@@ -110,20 +120,22 @@ Las rutas son relativas a la carpeta, así que el proyecto se puede mover o copi
 
 Requisitos:
 
-1. **Visual Studio 2022 o posterior** con la carga de trabajo *Desarrollo para el escritorio con C++*, que ya incluye CMake y Ninja.
+1. **Visual Studio 2026** con la carga de trabajo *Desarrollo para el escritorio con C++*, que ya incluye CMake.
 2. **Git**, necesario para que CMake descargue JUCE 9.0.2 la primera vez (unos 150 MB).
 
-En Visual Studio: **Archivo → Abrir → Carpeta…**, elige la carpeta del repositorio, selecciona el preset `x64 Debug` y ejecuta `StemLab.exe`.
+En Visual Studio: **Archivo → Abrir → Carpeta…**, elige la carpeta del repositorio, selecciona el preset `Visual Studio 2026 (x64)` y ejecuta `StemLab.exe`.
 
 Desde la *Developer PowerShell for VS*:
 
 ```powershell
-cmake --preset x64-debug
-cmake --build --preset x64-debug
-.\out\build\x64-debug\StemLab_artefacts\Debug\StemLab.exe
+cmake --preset vs2026
+cmake --build --preset debug        # o --preset release
+.\out\build\vs2026\StemLab_artefacts\Debug\StemLab.exe
 ```
 
-Si ya tienes JUCE descargado: `cmake --preset x64-debug -DSTEMLAB_JUCE_DIR=C:/ruta/a/JUCE`.
+Si ya tienes JUCE descargado: `cmake --preset vs2026 -DSTEMLAB_JUCE_DIR=C:/ruta/a/JUCE`. Con otra versión de Visual Studio, sin preset: `cmake -S . -B out/build/otro -A x64`.
+
+El runtime de C++ va dentro de `StemLab.exe` (`/MT`): no necesita el *Visual C++ Redistributable*.
 
 ## Entorno de IA (Python)
 
@@ -146,18 +158,59 @@ python\.venv\Scripts\python python\stemlab_separate.py --check
 > uno de python.org). Un entorno virtual solo guarda la ruta del Python con el que se creó; si ese
 > Python desaparece o se instaló dentro de otra aplicación empaquetada (como la app de escritorio de
 > Claude, que virtualiza `AppData\Roaming`), StemLab mostrará *"Python terminó con código 103: No
-> Python at …"*. Alternativa portátil: copiar un Python autónomo (p. ej. los de `uv`) a
-> `python/runtime/` (ignorada por Git) y apuntar `home` de `python/.venv/pyvenv.cfg` a esa carpeta.
+> Python at …"*. Alternativa portátil: un Python autónomo (p. ej. los de `uv` o
+> python-build-standalone) en `python/runtime/` (ignorada por Git) con los paquetes instalados
+> dentro, sin entorno virtual. Es lo que lleva el instalador.
 
-StemLab busca el intérprete en este orden:
+StemLab busca la carpeta `python` primero junto al ejecutable (instalación) y después en el repositorio, y en ella el intérprete en este orden:
 
 1. La variable de entorno `STEMLAB_PYTHON`.
-2. `python/.venv/Scripts/python.exe`: primero junto al ejecutable y después en el repositorio.
-3. `python` del `PATH`.
+2. El entorno virtual `.venv/Scripts/python.exe` (desarrollo).
+3. El Python autónomo `runtime/python.exe`, con los paquetes dentro (instalación).
+4. `python` del `PATH`.
 
 La primera separación descarga el modelo, unos 80 MB para `htdemucs`. **FFmpeg** es opcional: solo se usa para formatos que libsndfile no lee, como m4a o aac.
 
 El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así que StemLab escribe un WAV temporal y lo codifica `python/stemlab_encode_mp3.py` con LAME (paquete `lameenc`, incluido en `requirements.txt`). Exportar a WAV no necesita Python.
+
+## Instalador de Windows
+
+`StemLab-Setup.exe` instala StemLab listo para usar, también la separación:
+
+- `StemLab.exe`, los scripts de `python/` y un **Python 3.12 autónomo** con PyTorch (CPU) y Demucs ya
+  instalados (`python/runtime`, versiones exactas en `installer/requirements.lock.txt`). La descarga
+  ocupa unos 300 MB y, instalado, unos 850 MB. La primera separación descarga el modelo (80 MB).
+- Se instala **solo para el usuario**, sin permisos de administrador, en `%LOCALAPPDATA%\Programs\StemLab`,
+  con acceso en el menú Inicio (y en el escritorio, si se elige). Instalar una versión nueva actualiza la anterior.
+- La asociación de los `.stemlab` la sigue haciendo StemLab al arrancar. Al desinstalar (Configuración →
+  Aplicaciones) se quitan el programa, esa asociación y el icono de los proyectos; los ajustes y los
+  proyectos del usuario se quedan.
+- No está firmado: Windows SmartScreen puede avisar al abrirlo (**Más información → Ejecutar de todas formas**).
+
+**Generarlo** (Visual Studio, Git e Inno Setup 6: `winget install JRSoftware.InnoSetup`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+```
+
+Compila StemLab en Release (`out/build/installer`), prepara el Python del instalador (lo descarga y
+comprueba su SHA-256), pasa las pruebas —las rápidas y las de Python (MP3 y separación con Demucs) **con
+ese mismo Python**— y solo si todo va bien crea `out\installer\StemLab-Setup.exe`.
+
+**Publicarlo:** cambia la versión en `project(StemLab VERSION ...)` de `CMakeLists.txt` y sube una etiqueta
+con la misma versión:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions (`.github/workflows/installer.yml`) ejecuta el mismo script y sube `StemLab-Setup.exe` a la
+release de esa etiqueta (si no coincide con la versión de `CMakeLists.txt`, no publica nada). La web enlaza
+siempre a la última release, así que no hay que tocarla.
+
+**Actualizar los paquetes de Python:** instálalos en `python/.venv`, prueba (`StemLabTests --python`) y
+copia en `installer/requirements.lock.txt` la salida de `pip freeze --exclude pip`.
 
 ## Uso
 
@@ -259,9 +312,9 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, la carpeta del proyecto en disco al guardar, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV e interfaz sin audio | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, la carpeta del proyecto en disco al guardar, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV, interfaz sin audio y qué Python se usa (entorno virtual, el del instalador o el del PATH) | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
-| `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba); tarda ~1 min en CPU |
+| `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba) u otro Python con `STEMLAB_PYTHON`; tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
 | `--acoustic` | reproduce ruido por los altavoces y comprueba que el micrófono no lo atenúa (modo RAW) | altavoces y micrófono; hace ruido |
 | `--output <carpeta>` | dónde se dejan WAV, MP3, proyectos y capturas PNG | por defecto `test-output/` junto al ejecutable |

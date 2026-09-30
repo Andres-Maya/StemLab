@@ -4,7 +4,7 @@
 
 namespace stemlab::test
 {
-/** DSP, mezclador, clips, carga, grabador y proyectos (UnitTests.cpp). */
+/** DSP, mezclador, clips, carga, grabador, proyectos y qué Python se usa (UnitTests.cpp). */
 void runUnitTests();
 
 /** Deshacer/rehacer, grabar encima de audio y clic sobre un clip (EditingTests.cpp). */

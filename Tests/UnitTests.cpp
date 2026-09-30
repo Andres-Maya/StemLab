@@ -11,6 +11,7 @@
 #include "DSP/SaturationEffect.h"
 #include "AI/AudioSeparator.h"
 #include "Project/ProjectManager.h"
+#include "Utils/PythonEnvironment.h"
 #include "Utils/Strings.h"
 
 // Pruebas rápidas: no necesitan tarjeta de sonido ni Python.
@@ -52,6 +53,36 @@ namespace
         CHECK (formatTime (65.5) == "01:05.500", "formatTime: " << formatTime (65.5));
         CHECK (stemDisplayName ("drums") == "Batería"_u8 && stemDisplayName ("xyz") == "xyz", "nombres de stems");
         CHECK (stemSortOrder ("vocals") < stemSortOrder ("other"), "orden de stems");
+    }
+
+    void testPythonEnvironment()
+    {
+        section ("Utils: PythonEnvironment (con qué Python se separa)");
+
+        const auto folder = outputFolder().getChildFile ("python-environment");
+        folder.deleteRecursively();
+
+       #if JUCE_WINDOWS
+        const auto venv = folder.getChildFile (".venv/Scripts/python.exe");
+        const auto runtime = folder.getChildFile ("runtime/python.exe");
+        const juce::String systemPython ("python");
+       #else
+        const auto venv = folder.getChildFile (".venv/bin/python3");
+        const auto runtime = folder.getChildFile ("runtime/bin/python3");
+        const juce::String systemPython ("python3");
+       #endif
+
+        CHECK (PythonEnvironment::interpreterIn (folder) == systemPython, "sin entorno: el Python del PATH");
+
+        runtime.create();
+        CHECK (PythonEnvironment::interpreterIn (folder) == runtime.getFullPathName(),
+               "instalación: el Python autónomo de runtime/ (con Demucs dentro)");
+
+        venv.create();
+        CHECK (PythonEnvironment::interpreterIn (folder) == venv.getFullPathName(),
+               "desarrollo: el entorno virtual .venv tiene prioridad sobre runtime/");
+
+        folder.deleteRecursively();
     }
 
     void testEffects()
@@ -614,6 +645,7 @@ namespace
 void runUnitTests()
 {
     testUtils();
+    testPythonEnvironment();
     testEffects();
     testMixerAndTransport();
     testPlayWithoutAudio();

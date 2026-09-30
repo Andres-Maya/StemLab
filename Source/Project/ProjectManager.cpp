@@ -288,8 +288,11 @@ void ProjectManager::newProject()
 
     project = Project ("Proyecto sin título"_u8, folder, true);
 
+    // Entre llaves: en Release DBG no hace nada (sin ellas, aviso C4390).
     if (const auto result = project.createFolderStructure(); result.failed())
+    {
         DBG ("No se pudo crear la carpeta de la sesion: " << result.getErrorMessage());
+    }
 
     markSaved();
     sendChangeMessage();
