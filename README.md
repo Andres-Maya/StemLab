@@ -179,9 +179,11 @@ El mismo entorno sirve para **exportar a MP3**: JUCE solo sabe leer MP3, así qu
 
 - `StemLab.exe`, los scripts de `python/` y un **Python 3.12 autónomo** con PyTorch (CPU) y Demucs ya
   instalados (`python/runtime`, versiones exactas en `installer/requirements.lock.txt`). La descarga
-  ocupa unos 300 MB y, instalado, unos 850 MB. La primera separación descarga el modelo (80 MB).
+  ocupa unos 135 MB y, instalado, unos 740 MB. La primera separación descarga el modelo (80 MB).
 - Se instala **solo para el usuario**, sin permisos de administrador, en `%LOCALAPPDATA%\Programs\StemLab`,
   con acceso en el menú Inicio (y en el escritorio, si se elige). Instalar una versión nueva actualiza la anterior.
+  Si se elige otra carpeta, su ruta no puede pasar de unos 100 caracteres: las más largas de `python/runtime`
+  llegarían al límite de Windows (260). El instalador lo comprueba antes de copiar nada.
 - La asociación de los `.stemlab` la sigue haciendo StemLab al arrancar. Al desinstalar (Configuración →
   Aplicaciones) se quitan el programa, esa asociación y el icono de los proyectos; los ajustes y los
   proyectos del usuario se quedan.

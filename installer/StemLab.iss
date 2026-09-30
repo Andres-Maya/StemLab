@@ -1,17 +1,19 @@
-; Instalador de StemLab para Windows (Inno Setup 6).
+﻿; Instalador de StemLab para Windows (Inno Setup 6).
 ;
 ; No se compila a mano: lo hace installer\build-installer.ps1, que prepara la
 ; carpeta StagingDir (StemLab.exe + python\ con los scripts y un Python
 ; autónomo con Demucs) y ejecuta:
 ;
-;     ISCC.exe /DStagingDir=<carpeta> /O<salida> installer\StemLab.iss
+;     ISCC.exe /DStagingDir=<carpeta> /DLongestPath=<n> /O<salida> installer\StemLab.iss
+;
+; (LongestPath: la longitud de la ruta más larga dentro de StagingDir.)
 ;
 ; Se instala solo para el usuario actual, sin permisos de administrador, en
 ; %LOCALAPPDATA%\Programs\StemLab. La versión sale del propio StemLab.exe (la
 ; de project() en CMakeLists.txt): no hay que cambiarla aquí.
 
-#ifndef StagingDir
-  #error Falta /DStagingDir: ejecuta installer\build-installer.ps1
+#if !Defined(StagingDir) || !Defined(LongestPath)
+  #error Faltan /DStagingDir y /DLongestPath: ejecuta installer\build-installer.ps1
 #endif
 
 #define FullVersion GetVersionNumbersString(AddBackslash(StagingDir) + "StemLab.exe")
@@ -79,3 +81,19 @@ Type: dirifempty; Name: "{localappdata}\StemLab"
 
 [Run]
 Filename: "{app}\StemLab.exe"; Description: "{cm:LaunchProgram,StemLab}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Windows no admite rutas de más de 259 caracteres (MAX_PATH) y la más larga
+// de python\ ya ocupa {#LongestPath}: con una carpeta más larga, la instalación
+// fallaría a medias. Se avisa antes de empezar (también con /SILENT y /DIR=).
+const
+  MaxDirLength = 258 - {#LongestPath};
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := (CurPageID <> wpSelectDir) or (Length(WizardDirValue) <= MaxDirLength);
+
+  if not Result then
+    SuppressibleMsgBox('La ruta de la carpeta de instalación es demasiado larga para Windows. Elige una de '
+      + IntToStr(MaxDirLength) + ' caracteres como máximo.', mbError, MB_OK, IDOK);
+end;
