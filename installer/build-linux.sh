@@ -45,7 +45,9 @@ step() { printf '\n== %s\n' "$1"; }
 step '1/4 Compilar StemLab (Release)'
 
 cmake -S "$root" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$build_dir" --parallel --target StemLab StemLabTests
+# Tantos procesos como núcleos: con Make, --parallel sin número no pone límite
+# y compilar todo a la vez agota la memoria (GitHub Actions corta el trabajo).
+cmake --build "$build_dir" --parallel "$(nproc)" --target StemLab StemLabTests
 
 exe="$build_dir/StemLab_artefacts/Release/StemLab"
 tests="$build_dir/Tests/StemLabTests_artefacts/Release/StemLabTests"
