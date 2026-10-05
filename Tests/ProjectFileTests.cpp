@@ -203,6 +203,7 @@ namespace
 
     void testFileAssociationValues()
     {
+       #if JUCE_WINDOWS        // rutas y registro de Windows (en Linux lo hace installer/linux/install.sh)
         section ("Asociación de .stemlab en Windows (sin escribir en el registro)");
 
         const juce::File exe ("C:/Program Files/StemLab/StemLab.exe");     // con espacios
@@ -226,6 +227,7 @@ namespace
                "icono: el .ico propio de los proyectos, entre comillas");
         CHECK (valueOf (classes + "StemLab.Project\\shell\\open\\command\\") == quotedExe + " \"%1\"",
                "doble clic: la ruta va entre comillas aunque tenga espacios");
+       #endif
 
         section ("Icono de los proyectos .stemlab");
 

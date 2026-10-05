@@ -49,6 +49,8 @@ SolidCompression=yes
 LZMANumBlockThreads=4
 
 [Languages]
+; El asistente usa el idioma de Windows si es uno de estos (si no, inglés).
+Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]

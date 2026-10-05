@@ -203,13 +203,37 @@ ese mismo Python**— y solo si todo va bien crea `out\installer\StemLab-Setup.e
 con la misma versión:
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 GitHub Actions (`.github/workflows/installer.yml`) ejecuta el mismo script y sube `StemLab-Setup.exe` a la
-release de esa etiqueta (si no coincide con la versión de `CMakeLists.txt`, no publica nada). La web enlaza
-siempre a la última release, así que no hay que tocarla.
+release de esa etiqueta (si no coincide con la versión de `CMakeLists.txt`, no publica nada). En el mismo
+flujo, otro trabajo genera y sube el paquete de Linux (ver abajo); son independientes: si uno falla, el otro
+publica el suyo. La web enlaza siempre a la última release, así que no hay que tocarla. Para probar sin
+publicar: pestaña **Actions → Descargas (Windows y Linux) → Run workflow** (los deja como artefactos).
+
+### Paquete de Linux
+
+`StemLab-Linux-x86_64.tar.gz` es lo mismo para Linux: el ejecutable, los scripts de `python/` y el mismo
+**Python 3.12 autónomo** con PyTorch (CPU) y Demucs (`python/runtime`). No se instala: se descomprime donde
+se quiera y se abre con `./StemLab`.
+
+- `./install.sh` lo añade al menú de aplicaciones del usuario y asocia los `.stemlab` (sin permisos de
+  administrador, en `~/.local/share`); `./uninstall.sh` lo quita. `LEEME.txt` lo explica en español e inglés.
+- Necesita Linux de 64 bits (x86_64) con **glibc 2.39 o posterior** (Ubuntu 24.04, Fedora 40, Debian 13…),
+  porque GitHub Actions lo compila en Ubuntu 24.04.
+- En Linux no existe el modo RAW de Windows (no hace falta: ALSA y JACK entregan el micrófono sin efectos).
+
+**Generarlo** en Linux (las dependencias están al principio del script):
+
+```bash
+bash installer/build-linux.sh
+```
+
+Hace los mismos cuatro pasos que el de Windows —compilar en Release (`out/build/linux`), preparar el Python
+(SHA-256 comprobado), pasar las pruebas rápidas y las de Python con una pantalla virtual (`xvfb`) si no hay
+ninguna— y solo si todo va bien crea `out/linux/StemLab-Linux-x86_64.tar.gz`.
 
 **Actualizar los paquetes de Python:** instálalos en `python/.venv`, prueba (`StemLabTests --python`) y
 copia en `installer/requirements.lock.txt` la salida de `pip freeze --exclude pip`.

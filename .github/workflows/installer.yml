@@ -1,11 +1,15 @@
-# Instalador de Windows: compila StemLab, lo prueba (también la separación con
-# Demucs) y genera StemLab-Setup.exe con installer/build-installer.ps1.
+# Descargas de StemLab: compila, prueba (también la separación con Demucs) y
+# genera
+#   - Windows: StemLab-Setup.exe             (installer/build-installer.ps1)
+#   - Linux:   StemLab-Linux-x86_64.tar.gz   (installer/build-linux.sh)
 #
-# - Al subir una etiqueta de versión (git tag v0.1.0 && git push origin v0.1.0)
-#   lo publica en la release de GitHub de esa etiqueta. La web enlaza siempre
-#   a la última: /releases/latest/download/StemLab-Setup.exe
-# - Desde la pestaña Actions (Run workflow): solo lo deja como artefacto.
-name: Instalador de Windows
+# - Al subir una etiqueta de versión (git tag v0.2.0 && git push origin v0.2.0)
+#   los publica en la release de GitHub de esa etiqueta. La web enlaza siempre
+#   a la última: /releases/latest/download/<archivo>
+# - Desde la pestaña Actions (Run workflow): solo los deja como artefactos.
+#
+# Los dos trabajos son independientes: si uno falla, el otro publica el suyo.
+name: Descargas (Windows y Linux)
 
 on:
   push:
@@ -16,7 +20,8 @@ permissions:
   contents: write
 
 jobs:
-  installer:
+  windows:
+    name: Instalador de Windows
     runs-on: windows-latest
     timeout-minutes: 120
 
@@ -48,6 +53,55 @@ jobs:
           $version = (Get-Item out/installer/stage/StemLab.exe).VersionInfo.ProductVersion
           if ("v$version" -ne $env:TAG) { throw "La etiqueta $env:TAG no coincide con la versión de StemLab ($version)." }
 
+          # El trabajo de Linux puede crear la release a la vez: si ya existe, solo se sube.
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -ne 0) { gh release create $env:TAG --title "StemLab $version" --generate-notes }
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear la release $env:TAG." }
           gh release upload $env:TAG out/installer/StemLab-Setup.exe --clobber
+
+  linux:
+    name: Paquete de Linux
+    # El ejecutable necesita la glibc de este sistema o una posterior (2.39).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias de JUCE y pantalla virtual
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential cmake pkg-config git curl xvfb xauth \
+            libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Compilar, probar y crear el paquete
+        run: bash ./installer/build-linux.sh
+
+      - name: Guardar el paquete
+        uses: actions/upload-artifact@v4
+        with:
+          name: StemLab-Linux-x86_64
+          path: out/linux/StemLab-Linux-x86_64.tar.gz
+          if-no-files-found: error
+
+      - name: Publicar en la release de la etiqueta
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # La etiqueta tiene que coincidir con la versión de CMakeLists.txt.
+          version="$(cat out/linux/stage/StemLab/VERSION)"
+          if [ "v$version" != "$TAG" ]; then
+            echo "La etiqueta $TAG no coincide con la versión de StemLab ($version)." >&2
+            exit 1
+          fi
+
+          # El trabajo de Windows puede crear la release a la vez: si ya existe, solo se sube.
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --title "StemLab $version" --generate-notes || true
+          gh release view "$TAG" > /dev/null
+          gh release upload "$TAG" out/linux/StemLab-Linux-x86_64.tar.gz --clobber
