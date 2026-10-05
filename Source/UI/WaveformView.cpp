@@ -2,6 +2,7 @@
 
 #include "StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
+#include <algorithm>
 
 namespace stemlab
 {
@@ -460,7 +461,7 @@ void WaveformView::mouseDrag (const juce::MouseEvent& event)
         // Se "levanta" y se dibuja justo bajo el ratón, aunque pase por encima
         // de otro clip; la pista ya tiene su posición real (la que sonará).
         floatingClip = topClip = dragOriginal.id;
-        floatingStart = static_cast<double> (juce::jmax<juce::int64> (0, dragOriginal.timelineStart + delta));
+        floatingStart = static_cast<double> (std::max<juce::int64> (0, dragOriginal.timelineStart + delta));
         startAnimation();
     }
     else

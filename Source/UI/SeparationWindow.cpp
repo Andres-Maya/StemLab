@@ -73,7 +73,7 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
 void SeparationView::setSourceAudio (std::shared_ptr<const ClipSource> source, juce::int64 start, juce::int64 length)
 {
     audio = std::move (source);
-    audioStart = juce::jmax<juce::int64> (0, start);
+    audioStart = std::max<juce::int64> (0, start);
     audioLength = audio != nullptr ? juce::jmin (length, audio->getLength() - audioStart) : 0;
 }
 

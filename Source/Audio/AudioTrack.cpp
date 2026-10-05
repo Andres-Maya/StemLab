@@ -162,8 +162,8 @@ void AudioTrack::renderClips (int numSamples, juce::int64 timelinePosition) noex
             continue;
 
         const auto offsetInClip = timelinePosition - clip.timelineStart;
-        const auto first = juce::jlimit<juce::int64> (0, numSamples, -offsetInClip);
-        const auto last = juce::jlimit<juce::int64> (0, numSamples, clip.length - offsetInClip);
+        const auto first = std::clamp<juce::int64> (-offsetInClip, 0, numSamples);
+        const auto last = std::clamp<juce::int64> (clip.length - offsetInClip, 0, numSamples);
 
         if (last <= first)
             continue;

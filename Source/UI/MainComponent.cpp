@@ -4,6 +4,7 @@
 #include "ExportDialog.h"
 #include "StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
+#include <algorithm>
 
 namespace stemlab
 {
@@ -1034,7 +1035,7 @@ void MainComponent::pasteClip (std::shared_ptr<AudioTrack> track, juce::int64 po
 
     // Nunca encima de otro audio de la pista: si el cabezal está sobre un
     // fragmento, se pega justo después (en el primer hueco donde quepa).
-    position = juce::jmax<juce::int64> (0, position);
+    position = std::max<juce::int64> (0, position);
     clip.timelineStart = ClipEditing::findFreeSpace (clips, position, clip.length);
 
     clips.push_back (clip);

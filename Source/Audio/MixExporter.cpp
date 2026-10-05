@@ -4,6 +4,7 @@
 #include "Utils/Strings.h"
 
 #include <string>
+#include <algorithm>
 
 namespace stemlab
 {
@@ -185,7 +186,7 @@ juce::Result MixExporter::renderToWav (const juce::File& file, int bitsPerSample
 
     for (juce::int64 skipped = 0; skipped < preRoll;)
     {
-        const auto count = static_cast<int> (juce::jmin<juce::int64> (renderBlockSize, preRoll - skipped));
+        const auto count = static_cast<int> (std::min<juce::int64> (renderBlockSize, preRoll - skipped));
         mix.getNextAudioBlock (juce::AudioSourceChannelInfo (&block, 0, count));
         skipped += count;
     }
@@ -209,7 +210,7 @@ juce::Result MixExporter::renderToWav (const juce::File& file, int bitsPerSample
 
     for (juce::int64 written = 0; written < total;)
     {
-        const auto count = static_cast<int> (juce::jmin<juce::int64> (renderBlockSize, total - written));
+        const auto count = static_cast<int> (std::min<juce::int64> (renderBlockSize, total - written));
         source->getNextAudioBlock (juce::AudioSourceChannelInfo (&block, 0, count));
 
         for (int ch = 0; ch < 2; ++ch)

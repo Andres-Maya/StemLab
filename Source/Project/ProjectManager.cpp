@@ -911,7 +911,7 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
             const auto sourceLength = source->getLength();
 
             auto start = static_cast<juce::int64> (std::llround (clipRequest.startSeconds * decodedSampleRate));
-            auto offset = juce::jlimit<juce::int64> (0, sourceLength, std::llround (clipRequest.offsetSeconds * decodedSampleRate));
+            auto offset = std::clamp<juce::int64> (std::llround (clipRequest.offsetSeconds * decodedSampleRate), 0, sourceLength);
             auto length = clipRequest.lengthSeconds < 0.0 ? sourceLength - offset
                                                           : static_cast<juce::int64> (std::llround (clipRequest.lengthSeconds * decodedSampleRate));
             length = juce::jmin (length, sourceLength - offset);

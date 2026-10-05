@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <algorithm>
 
 #include <atomic>
 
@@ -33,7 +34,7 @@ public:
 
     void setPosition (juce::int64 newPosition) noexcept
     {
-        newPosition = juce::jmax<juce::int64> (0, newPosition);
+        newPosition = std::max<juce::int64> (0, newPosition);
         pendingSeek.store (newPosition);
 
         // Parado: la posición se actualiza ya para que la UI la muestre.

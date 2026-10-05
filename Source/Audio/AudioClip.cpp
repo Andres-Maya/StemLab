@@ -50,7 +50,7 @@ void trimStart (AudioClip& clip, juce::int64 newTimelineStart) noexcept
 {
     // Límites: no ir antes del principio del audio original, ni antes del 0,
     // ni dejar el clip más corto que el mínimo.
-    const auto earliest = juce::jmax<juce::int64> (0, clip.timelineStart - clip.sourceOffset);
+    const auto earliest = std::max<juce::int64> (0, clip.timelineStart - clip.sourceOffset);
     const auto latest = clip.getEnd() - minimumLength;
     newTimelineStart = juce::jlimit (earliest, juce::jmax (earliest, latest), newTimelineStart);
 
@@ -71,7 +71,7 @@ void trimEnd (AudioClip& clip, juce::int64 newTimelineEnd) noexcept
 
 void move (AudioClip& clip, juce::int64 newTimelineStart) noexcept
 {
-    clip.timelineStart = juce::jmax<juce::int64> (0, newTimelineStart);
+    clip.timelineStart = std::max<juce::int64> (0, newTimelineStart);
 }
 
 bool remove (std::vector<AudioClip>& clips, juce::uint32 clipId)
@@ -87,8 +87,8 @@ bool remove (std::vector<AudioClip>& clips, juce::uint32 clipId)
 
 juce::int64 findFreeSpace (const std::vector<AudioClip>& clips, juce::int64 position, juce::int64 length)
 {
-    position = juce::jmax<juce::int64> (0, position);
-    length = juce::jmax<juce::int64> (1, length);
+    position = std::max<juce::int64> (0, position);
+    length = std::max<juce::int64> (1, length);
 
     // Mientras algún clip ocupe parte de [position, position + length), se
     // salta a su final. Termina porque position solo avanza.
@@ -129,7 +129,7 @@ std::vector<AudioClip> moveWithoutOverlap (std::vector<AudioClip> clips, juce::u
         return clips;
 
     const auto length = moving->length;
-    const auto start = juce::jmax<juce::int64> (0, newStart);
+    const auto start = std::max<juce::int64> (0, newStart);
 
     std::vector<AudioClip*> others;
 

@@ -21,7 +21,7 @@
 #   sudo apt install build-essential cmake pkg-config git curl xvfb \
 #       libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
 #       libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
-#       libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev
+#       libxrandr-dev libxrender-dev libxi-dev libglu1-mesa-dev mesa-common-dev
 #
 # El ejecutable necesita la glibc del equipo donde se compila o una posterior:
 # GitHub Actions lo compila en Ubuntu 24.04 (glibc 2.39).
