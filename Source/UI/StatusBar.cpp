@@ -25,7 +25,10 @@ StatusBar::StatusBar (AIProcessManager& aiManager, ProjectManager& projectManage
     showSeparationButton.onClick = [this] { if (onShowSeparation != nullptr) onShowSeparation(); };
     addChildComponent (showSeparationButton);
 
-    setMessage ("Listo.");
+    cancelButton.setButtonText (tr ("Cancelar"));
+    showSeparationButton.setButtonText (tr ("Ver progreso"));
+
+    setMessage (tr ("Listo."));
     startTimerHz (10);
 }
 
@@ -51,7 +54,7 @@ void StatusBar::timerCallback()
     }
     else if (loading)
     {
-        messageLabel.setText ("Cargando audio..."_u8, juce::dontSendNotification);
+        messageLabel.setText (tr ("Cargando audio..."), juce::dontSendNotification);
         progressValue = -1.0;
     }
     else
@@ -60,7 +63,7 @@ void StatusBar::timerCallback()
     }
 
     const auto& project = projects.getProject();
-    projectLabel.setText (project.isTemporary() ? project.getName() + " (sin guardar)"_u8
+    projectLabel.setText (project.isTemporary() ? tr ("{0} (sin guardar)", project.getName())
                                                 : project.getDirectory().getFullPathName(),
                           juce::dontSendNotification);
 

@@ -280,6 +280,12 @@ copia en `installer/requirements.lock.txt` la salida de `pip freeze --exclude pi
    - También puedes **arrastrar un `.stemlab` a la ventana**. Si StemLab ya está abierto, el proyecto se abre en esa ventana.
    - Con cambios sin guardar, el título de la ventana muestra **\***. Al cerrar StemLab, crear un proyecto nuevo o abrir otro, pregunta **Guardar / No guardar / Cancelar**. Si el proyecto nunca se guardó, "Guardar" abre "Guardar como".
 
+**Tema, idioma y tutorial**
+
+- **Ver → Tema**: **oscuro** (el de siempre) o **claro**. **Ver → Idioma**: **español** o **inglés**; la primera vez se usa el idioma de Windows. Los dos se guardan en los ajustes de StemLab. Al cambiarlos, la ventana se vuelve a dibujar con el proyecto tal como estaba (no se puede en mitad de una grabación, una carga o una separación). La ventana de ondas de la separación es siempre oscura.
+- **Ayuda → Tutorial**: recorre la ventana parte por parte. Oscurece todo menos la zona de la que habla y pone al lado una tarjeta, con una flecha, que explica qué hace (**→** o **Intro**: siguiente; **←**: atrás; **Esc**: salir). Se abre solo la primera vez que arrancas StemLab, y en su primer paso deja elegir idioma y tema.
+- Para añadir un idioma: una tabla como `Source/Utils/Translations_en.cpp` (la clave es el texto en español del código, `tr ("...")`), su entrada en `Localisation::getLanguages()` y en `getDictionary()`, y el archivo en `CMakeLists.txt`. Las pruebas avisan de los textos que falten.
+
 Atajos de teclado:
 
 | Tecla | Acción |
@@ -314,14 +320,14 @@ ctest --test-dir out\build\vs2026 -C Debug                          # pruebas r�
 
 | Opción | Qué prueba | Necesita |
 |---|---|---|
-| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, la carpeta del proyecto en disco al guardar, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV, interfaz sin audio y qué Python se usa (entorno virtual, el del instalador o el del PATH) | nada (tarda segundos; es lo que ejecuta `ctest`) |
+| *(ninguna)* | DSP, mezclador, clips, carga y grabador, proyectos, cambios sin guardar, deshacer/rehacer (fragmentos y pistas), copiar y pegar pistas con el teclado, carpetas (meter, sacar, plegar, arrastrar) y su ventana de ondas, la carpeta del proyecto en disco al guardar, fragmentos sin solaparse (grabar, pegar, mover por delante de otro abriendo espacio, recortar), animación al arrastrar, Supr / Retroceso, clic sobre un fragmento, exportar a WAV, interfaz sin audio, idiomas (todos los textos traducidos), temas, tutorial y qué Python se usa (entorno virtual, el del instalador o el del PATH) | nada (tarda segundos; es lo que ejecuta `ctest`) |
 | `--device` | grabar de verdad (incluida una toma con el cabezal sobre audio, que va a continuación), recuperar el dispositivo, seguir la salida de Windows | tarjeta de sonido y micrófono |
 | `--python` | exportar a MP3 y separar con Demucs (suma de stems, cancelar, errores) | `python/.venv` (ver arriba) u otro Python con `STEMLAB_PYTHON`; tarda ~1 min en CPU |
 | `--all` | todo lo anterior | lo anterior |
 | `--acoustic` | reproduce ruido por los altavoces y comprueba que el micrófono no lo atenúa (modo RAW) | altavoces y micrófono; hace ruido |
 | `--output <carpeta>` | dónde se dejan WAV, MP3, proyectos y capturas PNG | por defecto `test-output/` junto al ejecutable |
 
-Cada comprobación imprime `ok:` o `FALLO:`. Al final aparece `RESULTADO: n/m`, y el código de salida es 0 solo si todo pasó. Las capturas de la interfaz (`addrow-*.png`, `lane*.png`, `clips.png`) sirven para revisarla a ojo.
+Cada comprobación imprime `ok:` o `FALLO:`. Al final aparece `RESULTADO: n/m`, y el código de salida es 0 solo si todo pasó. Las capturas de la interfaz (`addrow-*.png`, `lane*.png`, `clips.png`, `ventana-*.png`, `tutorial-*.png`) sirven para revisarla a ojo.
 
 ---
 

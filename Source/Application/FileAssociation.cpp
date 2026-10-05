@@ -1,6 +1,7 @@
 #include "FileAssociation.h"
 
 #include "Project/Project.h"
+#include "Utils/Strings.h"
 
 #include <StemLabBinaryData.h>
 
@@ -25,7 +26,7 @@ std::vector<std::pair<juce::String, juce::String>> FileAssociation::registryValu
 
     return {
         { classes + Project::fileExtension + "\\",              type },
-        { classes + type + "\\",                                "Proyecto de StemLab" },
+        { classes + type + "\\",                                tr ("Proyecto de StemLab") },
         { classes + type + "\\DefaultIcon\\",                   iconFile.getFullPathName().quoted() },
         // Entre comillas: las rutas con espacios también funcionan.
         { classes + type + "\\shell\\open\\command\\",          executable.getFullPathName().quoted() + " \"%1\"" },

@@ -1,5 +1,7 @@
 #include "EqualizerEffect.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 namespace stemlab
 {
 namespace
@@ -12,13 +14,13 @@ namespace
 
 EqualizerEffect::EqualizerEffect()
     : AudioEffect ("eq", "EQ", false),
-      lowGain  (addParameter (Parameter::continuous ("lowGain",  "Graves",    eqGainRange(), 0.0f, "dB"))),
-      lowFreq  (addParameter (Parameter::continuous ("lowFreq",  "Frec. G",   Parameter::frequencyRange (20.0f, 1000.0f), 120.0f, "Hz"))),
-      midGain  (addParameter (Parameter::continuous ("midGain",  "Medios",    eqGainRange(), 0.0f, "dB"))),
-      midFreq  (addParameter (Parameter::continuous ("midFreq",  "Frec. M",   Parameter::frequencyRange (100.0f, 10000.0f), 1000.0f, "Hz"))),
+      lowGain  (addParameter (Parameter::continuous ("lowGain",  msg ("Graves"),    eqGainRange(), 0.0f, "dB"))),
+      lowFreq  (addParameter (Parameter::continuous ("lowFreq",  msg ("Frec. G"),   Parameter::frequencyRange (20.0f, 1000.0f), 120.0f, "Hz"))),
+      midGain  (addParameter (Parameter::continuous ("midGain",  msg ("Medios"),    eqGainRange(), 0.0f, "dB"))),
+      midFreq  (addParameter (Parameter::continuous ("midFreq",  msg ("Frec. M"),   Parameter::frequencyRange (100.0f, 10000.0f), 1000.0f, "Hz"))),
       midQ     (addParameter (Parameter::continuous ("midQ",     "Q",         juce::NormalisableRange<float> (0.2f, 10.0f, 0.01f, 0.4f), 0.7f))),
-      highGain (addParameter (Parameter::continuous ("highGain", "Agudos",    eqGainRange(), 0.0f, "dB"))),
-      highFreq (addParameter (Parameter::continuous ("highFreq", "Frec. A",   Parameter::frequencyRange (1000.0f, 20000.0f), 8000.0f, "Hz")))
+      highGain (addParameter (Parameter::continuous ("highGain", msg ("Agudos"),    eqGainRange(), 0.0f, "dB"))),
+      highFreq (addParameter (Parameter::continuous ("highFreq", msg ("Frec. A"),   Parameter::frequencyRange (1000.0f, 20000.0f), 8000.0f, "Hz")))
 {
 }
 

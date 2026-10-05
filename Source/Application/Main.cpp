@@ -9,6 +9,7 @@
 #include "Project/Project.h"
 #include "UI/MainWindow.h"
 #include "UI/StemLabLookAndFeel.h"
+#include "Utils/Strings.h"
 
 namespace stemlab
 {
@@ -51,6 +52,13 @@ public:
         options.osxLibrarySubFolder = "Application Support";
         settings.setStorageParameters (options);
 
+        // Idioma y tema: los guardados; la primera vez, el idioma del sistema
+        // y el tema oscuro. Antes de crear nada que muestre textos o colores.
+        const auto* userSettings = settings.getUserSettings();
+        Localisation::setLanguage (Localisation::fromCode (userSettings->getValue ("language"), Localisation::getSystemLanguage()));
+        Palette::setTheme (userSettings->getValue ("theme") == "light" ? Theme::light : Theme::dark);
+        lookAndFeel.applyTheme();
+
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
         engine = std::make_unique<AudioEngine>();
@@ -77,7 +85,7 @@ public:
 
         if (audioError.isNotEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Audio",
-                                                    "No se pudo abrir el dispositivo de audio:\n" + audioError);
+                                                    tr ("No se pudo abrir el dispositivo de audio:\n{0}", audioError));
     }
 
     void shutdown() override

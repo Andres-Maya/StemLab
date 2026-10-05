@@ -5,14 +5,14 @@
 namespace stemlab
 {
 SaturationEffect::SaturationEffect()
-    : AudioEffect ("saturation", "Saturación"_u8, false),
+    : AudioEffect ("saturation", msg ("Saturación"), false),
       drive (addParameter (Parameter::continuous ("drive", "Drive",
                                                   juce::NormalisableRange<float> (0.0f, 24.0f, 0.1f), 6.0f, "dB"))),
-      mode (addParameter (Parameter::choice ("mode", "Tipo",
-                                             juce::StringArray ("Suave", "Dura", "Válvula"_u8), 0))),
-      mix (addParameter (Parameter::continuous ("mix", "Mezcla",
+      mode (addParameter (Parameter::choice ("mode", msg ("Tipo"),
+                                             juce::StringArray (msg ("Suave"), msg ("Dura"), msg ("Válvula")), 0))),
+      mix (addParameter (Parameter::continuous ("mix", msg ("Mezcla"),
                                                 juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f, "%"))),
-      output (addParameter (Parameter::continuous ("output", "Salida",
+      output (addParameter (Parameter::continuous ("output", msg ("Salida"),
                                                    juce::NormalisableRange<float> (-24.0f, 12.0f, 0.1f), 0.0f, "dB")))
 {
 }

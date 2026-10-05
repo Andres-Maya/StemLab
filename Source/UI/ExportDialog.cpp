@@ -16,9 +16,10 @@ namespace
     };
 
     const FormatOption formatOptions[] {
-        { "WAV 24 bits (recomendado)",      ExportFormat::wav24,      0 },
-        { "WAV 16 bits (calidad CD)",       ExportFormat::wav16,      0 },
-        { "WAV 32 bits coma flotante",      ExportFormat::wav32Float, 0 },
+        // Los nombres se traducen al mostrarlos (ver la lista "Formato").
+        { "WAV 24 bits (recomendado)",      ExportFormat::wav24,      0 },     // msg ("WAV 24 bits (recomendado)")
+        { "WAV 16 bits (calidad CD)",       ExportFormat::wav16,      0 },     // msg ("WAV 16 bits (calidad CD)")
+        { "WAV 32 bits coma flotante",      ExportFormat::wav32Float, 0 },     // msg ("WAV 32 bits coma flotante")
         { "MP3 320 kbps",                   ExportFormat::mp3,        320 },
         { "MP3 192 kbps",                   ExportFormat::mp3,        192 },
         { "MP3 128 kbps",                   ExportFormat::mp3,        128 },
@@ -31,12 +32,12 @@ namespace
     public:
         ExportJob (std::unique_ptr<MixExporter> mixExporter, ExportSettings exportSettings,
                    juce::Component* parent, ExportDialog::Callback callback)
-            : ThreadWithProgressWindow ("Exportar mezcla", true, true, 10000, "Cancelar", parent),
+            : ThreadWithProgressWindow (tr ("Exportar mezcla"), true, true, 10000, tr ("Cancelar"), parent),
               exporter (std::move (mixExporter)),
               settings (std::move (exportSettings)),
               onDone (std::move (callback))
         {
-            setStatusMessage ("Exportando " + settings.file.getFileName() + "...");
+            setStatusMessage (tr ("Exportando {0}...", settings.file.getFileName()));
         }
 
         void run() override
@@ -53,7 +54,7 @@ namespace
             if (userPressedCancel)
             {
                 result.cancelled = true;
-                result.status = juce::Result::fail ("Exportación cancelada."_u8);
+                result.status = juce::Result::fail (tr ("Exportación cancelada."));
             }
 
             if (onDone != nullptr)
@@ -76,7 +77,7 @@ namespace
         const auto extension = MixExporter::getFileExtension (option.format);
         defaultFolder.createDirectory();
 
-        chooser = std::make_unique<juce::FileChooser> ("Exportar mezcla como",
+        chooser = std::make_unique<juce::FileChooser> (tr ("Exportar mezcla como"),
                                                        defaultFolder.getChildFile (defaultName + extension),
                                                        "*" + extension);
 
@@ -110,19 +111,19 @@ namespace
 void ExportDialog::show (juce::Component* parent, AudioEngine& engine, std::unique_ptr<juce::FileChooser>& chooserOwner,
                          const juce::File& defaultFolder, const juce::String& defaultName, Callback onDone)
 {
-    auto* window = new juce::AlertWindow ("Exportar mezcla",
-                                          "Se exporta la mezcla completa tal como suena: volumen, paneo, mute, "
-                                          "solo, efectos y volumen master."_u8,
+    auto* window = new juce::AlertWindow (tr ("Exportar mezcla"),
+                                          tr ("Se exporta la mezcla completa tal como suena: volumen, paneo, mute, "
+                                              "solo, efectos y volumen master."),
                                           juce::MessageBoxIconType::NoIcon, parent);
 
     juce::StringArray labels;
 
     for (const auto& option : formatOptions)
-        labels.add (juce::String::fromUTF8 (option.label));
+        labels.add (tr (option.label));
 
-    window->addComboBox ("format", labels, "Formato");
-    window->addButton ("Exportar...", 1, juce::KeyPress (juce::KeyPress::returnKey));
-    window->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    window->addComboBox ("format", labels, tr ("Formato"));
+    window->addButton (tr ("Exportar..."), 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton (tr ("Cancelar"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
     window->enterModalState (true, juce::ModalCallbackFunction::create (
         [window, parent = juce::Component::SafePointer<juce::Component> (parent), &engine, &chooserOwner,

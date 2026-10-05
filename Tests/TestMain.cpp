@@ -45,6 +45,7 @@ int main (int argc, char** argv)
         runProjectFileTests();
         runExportTests();
         runUiTests();
+        runInterfaceTests();
 
         if (all || args.contains ("--device"))
             runDeviceTests();

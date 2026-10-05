@@ -7,10 +7,10 @@ namespace stemlab
 TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectManager)
     : engine (audioEngine),
       projects (projectManager),
-      toStartButton ("Ir al inicio", IconButton::Icon::toStart),
-      playButton ("Reproducir / Pausa (Espacio)", IconButton::Icon::play),
-      stopButton ("Detener", IconButton::Icon::stop),
-      recordButton ("Grabar en la pista seleccionada (R)", IconButton::Icon::record),
+      toStartButton (tr ("Ir al inicio"), IconButton::Icon::toStart),
+      playButton (tr ("Reproducir / Pausa (Espacio)"), IconButton::Icon::play),
+      stopButton (tr ("Detener"), IconButton::Icon::stop),
+      recordButton (tr ("Grabar en la pista seleccionada (R)"), IconButton::Icon::record),
       inputMeter ([this] (int channel) { return engine.getAndResetInputPeak (channel); }),
       masterMeter ([this] (int channel) { return engine.getMixer().getAndResetMasterPeak (channel); }),
       inputAttachment (engine.getInputGain(), inputSlider),
@@ -30,6 +30,8 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     timeLabel.setColour (juce::Label::backgroundColourId, Palette::background);
     addAndMakeVisible (timeLabel);
 
+    inputCaption.setText (tr ("Entrada"), juce::dontSendNotification);
+
     for (auto* caption : { &bpmCaption, &inputCaption, &masterCaption })
     {
         caption->setFont (juce::FontOptions (11.0f));
@@ -41,7 +43,7 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     bpmLabel.setEditable (false, true);
     bpmLabel.setJustificationType (juce::Justification::centred);
     bpmLabel.setFont (juce::FontOptions (16.0f));
-    bpmLabel.setTooltip ("Doble clic para editar");
+    bpmLabel.setTooltip (tr ("Doble clic para editar"));
     bpmLabel.setColour (juce::Label::backgroundColourId, Palette::background);
     bpmLabel.onTextChange = [this]
     {
@@ -57,8 +59,8 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     // Ganancia del micrófono antes de grabar, con su medidor (se mueve aunque no
     // se esté grabando, para ajustar el nivel antes).
     inputSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
-    inputSlider.setTooltip ("Ganancia de la entrada al grabar. Ajústala para que el medidor quede en verde/amarillo "
-                            "al hablar o tocar; un limitador suave evita que recorte."_u8);
+    inputSlider.setTooltip (tr ("Ganancia de la entrada al grabar. Ajústala para que el medidor quede en verde/amarillo "
+                                "al hablar o tocar; un limitador suave evita que recorte."));
     inputSlider.setColour (juce::Slider::trackColourId, Palette::record);
     addAndMakeVisible (inputCaption);
     addAndMakeVisible (inputSlider);
@@ -67,7 +69,7 @@ TransportBar::TransportBar (AudioEngine& audioEngine, ProjectManager& projectMan
     deviceLabel.setFont (juce::FontOptions (11.0f));
     deviceLabel.setMinimumHorizontalScale (0.7f);
     deviceLabel.setJustificationType (juce::Justification::centredRight);
-    deviceLabel.setTooltip ("Salida de audio actual (Audio > Configuración de audio)"_u8);
+    deviceLabel.setTooltip (tr ("Salida de audio actual (Audio > Configuración de audio)"));
     addAndMakeVisible (deviceLabel);
 
     masterSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
@@ -95,13 +97,33 @@ void TransportBar::timerCallback()
 
     // Qué salida está sonando; en rojo si el dispositivo de audio no funciona.
     const auto output = engine.getCurrentOutputName();
-    deviceLabel.setText (output.isNotEmpty() ? "Salida: " + output
-                                             : "Sin audio: revisa Audio > Configuración de audio"_u8,
+    deviceLabel.setText (output.isNotEmpty() ? tr ("Salida: {0}", output)
+                                             : tr ("Sin audio: revisa Audio > Configuración de audio"),
                          juce::dontSendNotification);
     deviceLabel.setColour (juce::Label::textColourId, output.isNotEmpty() ? Palette::textDim : Palette::record);
 
     if (! bpmLabel.isBeingEdited())
         bpmLabel.setText (juce::String (projects.getProject().getBpm(), 1), juce::dontSendNotification);
+}
+
+juce::Rectangle<int> TransportBar::getButtonsArea() const
+{
+    return toStartButton.getBounds().getUnion (recordButton.getBounds());
+}
+
+juce::Rectangle<int> TransportBar::getTimeArea() const
+{
+    return timeLabel.getBounds().getUnion (bpmLabel.getBounds());
+}
+
+juce::Rectangle<int> TransportBar::getInputArea() const
+{
+    return inputCaption.getBounds().getUnion (inputMeter.getBounds());
+}
+
+juce::Rectangle<int> TransportBar::getMasterArea() const
+{
+    return masterCaption.getBounds().getUnion (masterMeter.getBounds());
 }
 
 void TransportBar::paint (juce::Graphics& g)

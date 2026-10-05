@@ -8,8 +8,11 @@
 #include "SeparationWindow.h"
 #include "Project/ProjectManager.h"
 #include "StatusBar.h"
+#include "StemLabLookAndFeel.h"
+#include "TourOverlay.h"
 #include "TrackListView.h"
 #include "TransportBar.h"
+#include "Utils/Localisation.h"
 
 #include <optional>
 
@@ -18,7 +21,7 @@ namespace stemlab
 /**
     Ventana principal tipo DAW:
 
-        MENÚ        Archivo | Editar | Proyecto | Audio | IA | Ayuda
+        MENÚ        Archivo | Editar | Proyecto | Audio | IA | Ver | Ayuda
         TRANSPORTE  ⏮ ▶ ⏹ ⏺ · tiempo · BPM · master
         PISTAS      [cabecera][forma de onda] × N
         MEZCLADOR   canal + efectos de la pista seleccionada
@@ -46,6 +49,21 @@ public:
         "Ondas" de la carpeta). Solo se abre si quedan pistas de esa separación. */
     void toggleFolderWindow (const juce::String& folderId);
     bool isFolderWindowOpen (const juce::String& folderId) const;
+
+    /** El tutorial: recorre la ventana parte por parte (Ayuda > Tutorial y la
+        primera vez que se abre StemLab). */
+    void showTour();
+    TourOverlay* getTour() const noexcept       { return tour.get(); }
+
+    /** Cambiar de idioma o de tema (Ver, o el primer paso del tutorial). Hay
+        que volver a crear toda la interfaz: lo hace quien escucha, MainWindow.
+        reopenTour: el cambio se hizo desde el tutorial, que debe seguir abierto. */
+    void changeInterface (Language language, Theme theme, bool reopenTour = false);
+    std::function<void (Language, Theme, bool reopenTour)> onInterfaceChange;
+
+    /** La pista seleccionada (se conserva al volver a crear la interfaz). */
+    std::shared_ptr<AudioTrack> getSelectedTrack() const        { return trackList.getSelectedTrack(); }
+    void selectTrack (const std::shared_ptr<AudioTrack>& track) { trackList.selectTrack (track); }
 
     /** settings (opcional) guarda la lista de proyectos recientes. */
     MainComponent (AudioEngine& engine, ProjectManager& projects, AIProcessManager& ai,
@@ -128,7 +146,12 @@ private:
                                           const juce::StringArray& stemIds);
     void showAbout();
 
-    bool ensureIdle (const juce::String& action);
+    /** Zona de un menú de la barra (para el tutorial); la barra entera si no se conoce. */
+    juce::Rectangle<int> getMenuBounds (int menuIndex) const;
+
+    /** Con una separación, una carga o una grabación en curso muestra el
+        mensaje (por qué no se puede hacer eso ahora) y devuelve false. */
+    bool ensureIdle (const juce::String& message);
     /** Si hay cambios sin guardar pregunta Guardar / No guardar / Cancelar, y
         solo continúa si no se cancela (y, al guardar, si se guardó bien). */
     void askToSaveChanges (std::function<void()> continueAction);
@@ -165,6 +188,8 @@ private:
     std::optional<AudioClip> clipboard;             // fragmento copiado o cortado
     std::shared_ptr<AudioTrack> trackClipboard;     // copia de la pista copiada o cortada
     std::weak_ptr<AudioTrack> recordingTarget;      // pista donde va la grabación en curso
+
+    std::unique_ptr<TourOverlay> tour;              // el tutorial, mientras está abierto (encima de todo)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

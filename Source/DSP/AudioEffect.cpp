@@ -1,11 +1,13 @@
 #include "AudioEffect.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 namespace stemlab
 {
 AudioEffect::AudioEffect (juce::String effectId, juce::String displayName, bool enabledByDefault)
     : id (std::move (effectId)),
       name (std::move (displayName)),
-      enabled (Parameter::toggle ("enabled", "Activo", enabledByDefault))
+      enabled (Parameter::toggle ("enabled", msg ("Activo"), enabledByDefault))
 {
 }
 

@@ -1,5 +1,7 @@
 #include "AudioSeparator.h"
 
+#include "Utils/Strings.h"
+
 #include <iterator>
 
 namespace stemlab
@@ -37,7 +39,7 @@ juce::String stemDisplayName (const juce::String& stemId)
 {
     for (const auto& stem : knownStems)
         if (stemId == stem.id)
-            return juce::String::fromUTF8 (stem.displayName);
+            return tr (stem.displayName);       // "Voz", "Batería"...: en el idioma de la interfaz
 
     return stemId;
 }

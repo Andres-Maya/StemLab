@@ -1,12 +1,14 @@
 #include "LimiterEffect.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 namespace stemlab
 {
 LimiterEffect::LimiterEffect()
     : AudioEffect ("limiter", "Limiter", false),
-      inputGain (addParameter (Parameter::continuous ("input", "Entrada",
+      inputGain (addParameter (Parameter::continuous ("input", msg ("Entrada"),
                                                       juce::NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f, "dB"))),
-      ceiling   (addParameter (Parameter::continuous ("ceiling", "Techo",
+      ceiling   (addParameter (Parameter::continuous ("ceiling", msg ("Techo"),
                                                       juce::NormalisableRange<float> (-12.0f, 0.0f, 0.1f), -1.0f, "dB"))),
       release   (addParameter (Parameter::continuous ("release", "Release",
                                                       juce::NormalisableRange<float> (1.0f, 500.0f, 1.0f, 0.4f), 60.0f, "ms")))

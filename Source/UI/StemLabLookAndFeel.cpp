@@ -4,26 +4,57 @@
 
 namespace stemlab
 {
+namespace Palette
+{
+    namespace
+    {
+        Theme currentTheme = Theme::dark;
+    }
+
+    Theme getTheme()    { return currentTheme; }
+
+    void setTheme (Theme theme)
+    {
+        currentTheme = theme;
+        const auto light = theme == Theme::light;
+
+        background = juce::Colour (light ? 0xfff2f4f7 : 0xff121419);
+        panel      = juce::Colour (light ? 0xffffffff : 0xff1b1e25);
+        panelLight = juce::Colour (light ? 0xffe3e7ee : 0xff252932);
+        outline    = juce::Colour (light ? 0xffc8ced9 : 0xff343945);
+        text       = juce::Colour (light ? 0xff1b1f27 : 0xffe4e6eb);
+        textDim    = juce::Colour (light ? 0xff5b6472 : 0xff8b919c);
+        accent     = juce::Colour (light ? 0xff0b84c9 : 0xff4fc3f7);
+    }
+
+    juce::Colour onBackground (juce::Colour colour)
+    {
+        return currentTheme == Theme::light && ! colour.isTransparent() ? colour.darker (0.32f) : colour;
+    }
+}
+
 juce::Colour trackColourFor (const juce::String& trackName, int index)
 {
+    // Con el nombre en cualquier idioma de la interfaz (ver Utils/Localisation.h).
     struct NamedColour
     {
-        const char* keyword;
+        const char* spanish;
+        const char* english;
         juce::uint32 argb;
     };
 
     static const NamedColour named[] {
-        { "Voz",       0xffff6b9d },
-        { "Batería",   0xffffa94d },
-        { "Bajo",      0xffb197fc },
-        { "Guitarra",  0xffff6b6b },
-        { "Piano",     0xffffd43b },
-        { "Otros",     0xff38d9a9 },
-        { "Grabación", 0xff748ffc },     // índigo: el rojo queda solo para "grabando"
+        { "Voz",       "Vocals",    0xffff6b9d },
+        { "Batería",   "Drums",     0xffffa94d },
+        { "Bajo",      "Bass",      0xffb197fc },
+        { "Guitarra",  "Guitar",    0xffff6b6b },
+        { "Piano",     "Piano",     0xffffd43b },
+        { "Otros",     "Other",     0xff38d9a9 },
+        { "Grabación", "Recording", 0xff748ffc },     // índigo: el rojo queda solo para "grabando"
     };
 
     for (const auto& entry : named)
-        if (trackName.startsWith (juce::String::fromUTF8 (entry.keyword)))
+        if (trackName.startsWith (juce::String::fromUTF8 (entry.spanish)) || trackName.startsWith (entry.english))
             return juce::Colour (entry.argb);
 
     static const juce::uint32 fallback[] { 0xff4fc3f7, 0xff94d82d, 0xfff783ac, 0xff74c0fc, 0xffffc078, 0xff63e6be };
@@ -31,10 +62,16 @@ juce::Colour trackColourFor (const juce::String& trackName, int index)
 }
 
 StemLabLookAndFeel::StemLabLookAndFeel()
-    : juce::LookAndFeel_V4 (juce::LookAndFeel_V4::ColourScheme (Palette::background, Palette::panel, Palette::panel,
-                                                                Palette::outline, Palette::text, Palette::panelLight,
-                                                                Palette::background, Palette::accent, Palette::text))
 {
+    applyTheme();
+}
+
+void StemLabLookAndFeel::applyTheme()
+{
+    setColourScheme (juce::LookAndFeel_V4::ColourScheme (Palette::background, Palette::panel, Palette::panel,
+                                                         Palette::outline, Palette::text, Palette::panelLight,
+                                                         Palette::background, Palette::accent, Palette::text));
+
     setColour (juce::ResizableWindow::backgroundColourId, Palette::background);
 
     setColour (juce::Label::textColourId, Palette::text);
@@ -57,9 +94,14 @@ StemLabLookAndFeel::StemLabLookAndFeel()
     setColour (juce::ComboBox::outlineColourId, Palette::outline);
     setColour (juce::PopupMenu::backgroundColourId, Palette::panel);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, Palette::accent.withAlpha (0.25f));
+    setColour (juce::PopupMenu::highlightedTextColourId, Palette::text);
 
     setColour (juce::ProgressBar::backgroundColourId, Palette::panelLight);
     setColour (juce::ProgressBar::foregroundColourId, Palette::accent);
+
+    setColour (juce::TooltipWindow::backgroundColourId, Palette::panelLight);
+    setColour (juce::TooltipWindow::textColourId, Palette::text);
+    setColour (juce::TooltipWindow::outlineColourId, Palette::outline);
 }
 
 void StemLabLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,

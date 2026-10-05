@@ -109,7 +109,7 @@ ExportResult MixExporter::render (const ExportSettings& settings, std::function<
 
     if (length <= 0)
     {
-        result.status = juce::Result::fail ("No hay nada que exportar: el proyecto no tiene audio.");
+        result.status = juce::Result::fail (tr ("No hay nada que exportar: el proyecto no tiene audio."));
         return result;
     }
 
@@ -129,7 +129,7 @@ ExportResult MixExporter::render (const ExportSettings& settings, std::function<
         result.status = renderToWav (temp.getFile(), bits, sampleRate, report, result.peak);
 
         if (result.status.wasOk() && ! temp.overwriteTargetFileWithTemporary())
-            result.status = juce::Result::fail ("No se pudo escribir el archivo:\n"_u8 + settings.file.getFullPathName());
+            result.status = juce::Result::fail (tr ("No se pudo escribir el archivo:\n{0}", settings.file.getFullPathName()));
     }
     else
     {
@@ -145,7 +145,7 @@ ExportResult MixExporter::render (const ExportSettings& settings, std::function<
                                        [&report] (double p) { return report (0.7 + p * 0.3); });
 
         if (result.status.wasOk() && ! mp3.overwriteTargetFileWithTemporary())
-            result.status = juce::Result::fail ("No se pudo escribir el archivo:\n"_u8 + settings.file.getFullPathName());
+            result.status = juce::Result::fail (tr ("No se pudo escribir el archivo:\n{0}", settings.file.getFullPathName()));
     }
 
     result.cancelled = cancelled;
@@ -161,7 +161,7 @@ juce::Result MixExporter::renderToWav (const juce::File& file, int bitsPerSample
     std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
 
     if (stream == nullptr)
-        return juce::Result::fail ("No se pudo crear el archivo:\n"_u8 + file.getFullPathName());
+        return juce::Result::fail (tr ("No se pudo crear el archivo:\n{0}", file.getFullPathName()));
 
     const auto options = juce::AudioFormatWriterOptions{}
                              .withSampleRate (outputRate)
@@ -173,7 +173,7 @@ juce::Result MixExporter::renderToWav (const juce::File& file, int bitsPerSample
     auto writer = wav.createWriterFor (stream, options);
 
     if (writer == nullptr)
-        return juce::Result::fail ("No se pudo crear el escritor WAV.");
+        return juce::Result::fail (tr ("No se pudo crear el escritor WAV."));
 
     // Precalentamiento en silencio (antes del 0): las rampas de volumen de las
     // pistas parten de 0 y así llegan a su valor antes de la primera muestra.
@@ -219,12 +219,12 @@ juce::Result MixExporter::renderToWav (const juce::File& file, int bitsPerSample
             addDither (block, count, random);
 
         if (! writer->writeFromAudioSampleBuffer (block, 0, count))
-            return juce::Result::fail ("No se pudo escribir en el disco (¿está lleno?)."_u8);
+            return juce::Result::fail (tr ("No se pudo escribir en el disco (¿está lleno?)."));
 
         written += count;
 
         if (! progress (static_cast<double> (written) / static_cast<double> (total)))
-            return juce::Result::fail ("Exportación cancelada."_u8);
+            return juce::Result::fail (tr ("Exportación cancelada."));
     }
 
     return juce::Result::ok();
@@ -236,7 +236,7 @@ juce::Result MixExporter::encodeMp3 (const juce::File& wav, const juce::File& mp
     const auto python = PythonEnvironment::find (mp3ScriptName);
 
     if (! python.getScript (mp3ScriptName).existsAsFile())
-        return juce::Result::fail ("No se encontró el script de MP3:\n"_u8 + python.getScript (mp3ScriptName).getFullPathName());
+        return juce::Result::fail (tr ("No se encontró el script de MP3:\n{0}", python.getScript (mp3ScriptName).getFullPathName()));
 
     auto args = python.commandFor (mp3ScriptName);
     args.addArray ({ "--input", wav.getFullPathName(), "--output", mp3.getFullPathName(),
@@ -245,8 +245,8 @@ juce::Result MixExporter::encodeMp3 (const juce::File& wav, const juce::File& mp
     juce::ChildProcess process;
 
     if (! process.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
-        return juce::Result::fail ("No se pudo ejecutar Python (" + python.pythonCommand + ") para codificar el MP3.\n\n"
-                                   "Crea el entorno virtual descrito en README.md, o exporta en WAV.");
+        return juce::Result::fail (tr ("No se pudo ejecutar Python ({0}) para codificar el MP3.\n\n"
+                                       "Crea el entorno virtual descrito en README.md, o exporta en WAV.", python.pythonCommand));
 
     juce::String scriptError;
     juce::StringArray logTail;
@@ -295,7 +295,7 @@ juce::Result MixExporter::encodeMp3 (const juce::File& wav, const juce::File& mp
     if (cancelled)
     {
         process.kill();
-        return juce::Result::fail ("Exportación cancelada."_u8);
+        return juce::Result::fail (tr ("Exportación cancelada."));
     }
 
     if (! line.empty())
@@ -307,11 +307,11 @@ juce::Result MixExporter::encodeMp3 (const juce::File& wav, const juce::File& mp
         return juce::Result::fail (scriptError);
 
     if (const auto exitCode = process.getExitCode(); exitCode != 0)
-        return juce::Result::fail ("Python terminó con código "_u8 + juce::String (exitCode) + " al codificar el MP3:\n\n"
-                                   + logTail.joinIntoString ("\n"));
+        return juce::Result::fail (tr ("Python terminó con código {0} al codificar el MP3:\n\n{1}",
+                                       exitCode, logTail.joinIntoString ("\n")));
 
     if (! mp3.existsAsFile() || mp3.getSize() == 0)
-        return juce::Result::fail ("El codificador no generó el MP3."_u8);
+        return juce::Result::fail (tr ("El codificador no generó el MP3."));
 
     return juce::Result::ok();
 }

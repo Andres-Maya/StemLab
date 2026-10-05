@@ -62,8 +62,8 @@ public:
     }
 
 private:
-    juce::Label volumeLabel { {}, "Volumen" };
-    juce::Label panLabel { {}, "Paneo" };
+    juce::Label volumeLabel { {}, tr ("Volumen") };
+    juce::Label panLabel { {}, tr ("Paneo") };
     juce::Slider volume { juce::Slider::LinearVertical, juce::Slider::TextBoxBelow };
     juce::Slider pan { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
     LevelMeter meter;
@@ -117,7 +117,7 @@ void MixerView::paint (juce::Graphics& g)
     auto title = getLocalBounds().removeFromTop (titleHeight).reduced (12, 0);
     g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
     g.setColour (Palette::textDim);
-    g.drawText ("MEZCLADOR", title, juce::Justification::centredLeft, false);
+    g.drawText (tr ("MEZCLADOR"), title, juce::Justification::centredLeft, false);
 
     if (track != nullptr)
     {
@@ -127,7 +127,7 @@ void MixerView::paint (juce::Graphics& g)
     else
     {
         g.setFont (juce::FontOptions (14.0f));
-        g.drawText ("Selecciona una pista para ver su canal y sus efectos.",
+        g.drawText (tr ("Selecciona una pista para ver su canal y sus efectos."),
                     getLocalBounds().withTrimmedTop (titleHeight), juce::Justification::centred, true);
     }
 

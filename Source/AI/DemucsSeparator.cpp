@@ -23,7 +23,7 @@ namespace
     {
         SeparationResult result;
         result.cancelled = true;
-        result.status = juce::Result::fail ("Separación cancelada."_u8);
+        result.status = juce::Result::fail (tr ("Separación cancelada."));
         return result;
     }
 }
@@ -48,9 +48,9 @@ std::vector<AudioSeparator::ModelInfo> DemucsSeparator::getAvailableModels() con
     const juce::StringArray fourStems { "vocals", "drums", "bass", "other" };
 
     return {
-        { "htdemucs",    "4 pistas: voz, batería, bajo y otros (recomendado)"_u8, fourStems },
-        { "htdemucs_ft", "4 pistas, más calidad (unas 4 veces más lento)"_u8, fourStems },
-        { "htdemucs_6s", "6 pistas: añade guitarra y piano (experimental)"_u8,
+        { "htdemucs",    tr ("4 pistas: voz, batería, bajo y otros (recomendado)"), fourStems },
+        { "htdemucs_ft", tr ("4 pistas, más calidad (unas 4 veces más lento)"), fourStems },
+        { "htdemucs_6s", tr ("6 pistas: añade guitarra y piano (experimental)"),
           { "vocals", "drums", "bass", "guitar", "piano", "other" } },
     };
 }
@@ -80,10 +80,10 @@ SeparationResult DemucsSeparator::separate (const SeparationRequest& request, Se
     const auto config = getSettings();
 
     if (! config.scriptFile.existsAsFile())
-        return failure ("No se encontró el script de separación:\n"_u8 + config.scriptFile.getFullPathName());
+        return failure (tr ("No se encontró el script de separación:\n{0}", config.scriptFile.getFullPathName()));
 
     if (! request.inputFile.existsAsFile())
-        return failure ("No existe el archivo de entrada:\n" + request.inputFile.getFullPathName());
+        return failure (tr ("No existe el archivo de entrada:\n{0}", request.inputFile.getFullPathName()));
 
     if (const auto created = request.outputDirectory.createDirectory(); created.failed())
         return failure (created.getErrorMessage());
@@ -108,7 +108,7 @@ SeparationResult DemucsSeparator::separate (const SeparationRequest& request, Se
     args.add (juce::String (config.shifts));
 
     progress.setProgress (-1.0);
-    progress.setStatus ("Iniciando Python..."_u8);
+    progress.setStatus (tr ("Iniciando Python..."));
 
     juce::ChildProcess process;
 
@@ -119,9 +119,9 @@ SeparationResult DemucsSeparator::separate (const SeparationRequest& request, Se
             return cancellation();
 
         if (! process.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
-            return failure ("No se pudo ejecutar Python (" + config.pythonCommand + ").\n\n"
-                            "Crea el entorno virtual descrito en README.md o define la variable "
-                            "de entorno STEMLAB_PYTHON con la ruta a python.exe.");
+            return failure (tr ("No se pudo ejecutar Python ({0}).\n\n"
+                                "Crea el entorno virtual descrito en README.md o define la variable "
+                                "de entorno STEMLAB_PYTHON con la ruta a python.exe.", config.pythonCommand));
 
         activeProcess = &process;
     }
@@ -129,12 +129,22 @@ SeparationResult DemucsSeparator::separate (const SeparationRequest& request, Se
     juce::String scriptError;
     juce::StringArray logTail;
 
+    // El script escribe sus mensajes en español: con estas plantillas se
+    // muestran en el idioma de la interfaz.
+    const juce::StringArray scriptMessages {
+        msg ("Cargando PyTorch..."),
+        msg ("Cargando modelo {0} en {1} (la primera vez se descarga)..."),
+        msg ("Leyendo {0}..."),
+        msg ("Separando instrumentos ({0})..."),
+        msg ("Guardando pistas..."),
+    };
+
     const auto handleLine = [&] (const juce::String& text)
     {
         if (text.startsWith ("@@PROGRESS "))
             progress.setProgress (text.substring (11).getDoubleValue());
         else if (text.startsWith ("@@STATUS "))
-            progress.setStatus (text.substring (9));
+            progress.setStatus (Localisation::translateMatching (text.substring (9), scriptMessages));
         else if (text.startsWith ("@@ERROR "))
             scriptError = text.substring (8).replace ("\\n", "\n");
         else if (text.startsWith ("@@"))
@@ -194,14 +204,13 @@ SeparationResult DemucsSeparator::separate (const SeparationRequest& request, Se
         return failure (scriptError);
 
     if (exitCode != 0)
-        return failure ("Python terminó con código "_u8 + juce::String (exitCode) + ":\n\n"
-                        + logTail.joinIntoString ("\n"));
+        return failure (tr ("Python terminó con código {0}:\n\n{1}", exitCode, logTail.joinIntoString ("\n")));
 
     SeparationResult result;
     result.stems = collectStems (request.outputDirectory);
 
     if (result.stems.empty())
-        return failure ("El modelo terminó pero no generó archivos WAV en:\n"_u8 + request.outputDirectory.getFullPathName());
+        return failure (tr ("El modelo terminó pero no generó archivos WAV en:\n{0}", request.outputDirectory.getFullPathName()));
 
     return result;
 }

@@ -37,6 +37,8 @@ class TrackListView final : public juce::Component,
                             private juce::ScrollBar::Listener
 {
 public:
+    static constexpr int rulerHeight = 24;       // la regla de tiempo, encima de las pistas
+
     explicit TrackListView (AudioEngine& engine);
     ~TrackListView() override;
 

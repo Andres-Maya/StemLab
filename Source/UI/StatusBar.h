@@ -37,8 +37,8 @@ private:
     juce::Label projectLabel;
     double progressValue = 0.0;
     juce::ProgressBar progressBar { progressValue };
-    juce::TextButton cancelButton { "Cancelar" };
-    juce::TextButton showSeparationButton { "Ver progreso" };
+    juce::TextButton cancelButton;              // "Cancelar"
+    juce::TextButton showSeparationButton;      // "Ver progreso"
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StatusBar)
 };

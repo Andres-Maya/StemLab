@@ -78,13 +78,16 @@ set(STEMLAB_SOURCES
     Source/UI/StatusBar.cpp
     Source/UI/StemLabLookAndFeel.cpp
     Source/UI/TimeRuler.cpp
+    Source/UI/TourOverlay.cpp
     Source/UI/TrackListView.cpp
     Source/UI/TrackView.cpp
     Source/UI/TransportBar.cpp
     Source/UI/WaveformView.cpp
 
+    Source/Utils/Localisation.cpp
     Source/Utils/Parameter.cpp
-    Source/Utils/PythonEnvironment.cpp)
+    Source/Utils/PythonEnvironment.cpp
+    Source/Utils/Translations_en.cpp)
 
 # Rutas absolutas: Tests/CMakeLists.txt usa la misma lista.
 set(STEMLAB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")

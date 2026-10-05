@@ -56,7 +56,11 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
 {
     setOpaque (true);
 
-    cancelButton.setButtonText ("Cancelar separación"_u8);
+    // Esta ventana es siempre oscura (DarkPalette), también con el tema claro.
+    cancelButton.setButtonText (tr ("Cancelar separación"));
+    cancelButton.setColour (juce::TextButton::buttonColourId, DarkPalette::panelLight);
+    cancelButton.setColour (juce::TextButton::textColourOffId, DarkPalette::text);
+    cancelButton.setColour (juce::ComboBox::outlineColourId, DarkPalette::outline);
     cancelButton.onClick = [this] { if (onCancel != nullptr) onCancel(); };
     addAndMakeVisible (cancelButton);
 
@@ -122,7 +126,7 @@ void SeparationView::advance (double seconds)
     if (finished && succeeded)
     {
         progress = 1.0;
-        status = "¡Separación completada!"_u8;
+        status = tr ("¡Separación completada!");
     }
 
     // El número se acerca al progreso real sin saltos.
@@ -255,18 +259,18 @@ void SeparationView::resized()
 //==============================================================================
 void SeparationView::paint (juce::Graphics& g)
 {
-    g.fillAll (Palette::background);
+    g.fillAll (DarkPalette::background);
 
     auto bounds = getLocalBounds().toFloat();
     auto header = bounds.removeFromTop ((float) headerHeight).reduced (20.0f, 10.0f);
     bounds.removeFromBottom ((float) footerHeight);
 
     // Título y estado.
-    g.setColour (Palette::text);
+    g.setColour (DarkPalette::text);
     g.setFont (juce::FontOptions (19.0f, juce::Font::bold));
-    g.drawText ((finished && succeeded ? "Pistas de \"" : "Separando \"") + sourceName + "\"",
+    g.drawText (finished && succeeded ? tr ("Pistas de \"{0}\"", sourceName) : tr ("Separando \"{0}\"", sourceName),
                 header.removeFromTop (26.0f), juce::Justification::centred, true);
-    g.setColour (Palette::textDim);
+    g.setColour (DarkPalette::textDim);
     g.setFont (juce::FontOptions (13.5f));
     g.drawText (status, header, juce::Justification::centred, true);
 
@@ -541,7 +545,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
 //==============================================================================
 SeparationWindow::SeparationWindow (const juce::String& sourceName, juce::Colour sourceColour,
                                     std::vector<SeparationView::Stem> stems)
-    : juce::DocumentWindow ("Separando instrumentos", Palette::background, juce::DocumentWindow::closeButton)
+    : juce::DocumentWindow (tr ("Separando instrumentos"), DarkPalette::background, juce::DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);
     view = new SeparationView (sourceName, sourceColour, std::move (stems));

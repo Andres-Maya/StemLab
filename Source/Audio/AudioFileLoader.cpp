@@ -10,24 +10,24 @@ juce::Result AudioFileLoader::load (juce::AudioFormatManager& formatManager, con
                                     double targetSampleRate, juce::AudioBuffer<float>& destination)
 {
     if (! file.existsAsFile())
-        return juce::Result::fail ("El archivo no existe.");
+        return juce::Result::fail (tr ("El archivo no existe."));
 
     std::unique_ptr<juce::AudioFormatReader> reader (formatManager.createReaderFor (file));
 
     if (reader == nullptr)
-        return juce::Result::fail ("Formato de audio no soportado.");
+        return juce::Result::fail (tr ("Formato de audio no soportado."));
 
     const auto sourceRate = reader->sampleRate;
     const auto sourceLength = reader->lengthInSamples;
 
     if (sourceRate <= 0.0 || sourceLength <= 0)
-        return juce::Result::fail ("El archivo está vacío."_u8);
+        return juce::Result::fail (tr ("El archivo está vacío."));
 
     const auto ratio = sourceRate / targetSampleRate;
     const auto destinationLength = static_cast<juce::int64> (std::ceil (static_cast<double> (sourceLength) / ratio));
 
     if (destinationLength > std::numeric_limits<int>::max())
-        return juce::Result::fail ("El archivo es demasiado largo.");
+        return juce::Result::fail (tr ("El archivo es demasiado largo."));
 
     const auto numSamples = static_cast<int> (destinationLength);
     destination.setSize (2, numSamples, false, true, false);

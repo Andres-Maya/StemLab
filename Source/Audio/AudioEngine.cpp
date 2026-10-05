@@ -22,7 +22,7 @@ namespace
 }
 
 AudioEngine::AudioEngine()
-    : inputGain (Parameter::continuous ("inputGain", "Entrada",
+    : inputGain (Parameter::continuous ("inputGain", msg ("Entrada"),
                                         juce::NormalisableRange<float> (0.0f, 40.0f, 0.5f), 18.0f, "dB"))
 {
     formatManager.registerBasicFormats();
@@ -234,13 +234,13 @@ juce::Result AudioEngine::startRecording (const juce::File& file)
     auto* device = deviceManager.getCurrentAudioDevice();
 
     if (device == nullptr)
-        return juce::Result::fail ("No hay ningún dispositivo de audio activo."_u8);
+        return juce::Result::fail (tr ("No hay ningún dispositivo de audio activo."));
 
     const auto numInputs = device->getActiveInputChannels().countNumberOfSetBits();
 
     if (numInputs == 0)
-        return juce::Result::fail ("El dispositivo actual no tiene entradas activas.\n"
-                                   "Actívalas en Audio > Configuración de audio."_u8);
+        return juce::Result::fail (tr ("El dispositivo actual no tiene entradas activas.\n"
+                                       "Actívalas en Audio > Configuración de audio."));
 
     recordingLatency = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples();
 

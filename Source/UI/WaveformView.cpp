@@ -1,6 +1,7 @@
 #include "WaveformView.h"
 
 #include "StemLabLookAndFeel.h"
+#include "Utils/Strings.h"
 
 namespace stemlab
 {
@@ -508,7 +509,7 @@ void WaveformView::mouseUp (const juce::MouseEvent&)
     if (changed)
     {
         if (onClipsEdited != nullptr)
-            onClipsEdited (std::move (clipsBeforeDrag), mode == DragMode::move ? "Mover fragmento" : "Recortar fragmento");
+            onClipsEdited (std::move (clipsBeforeDrag), mode == DragMode::move ? msg ("Mover fragmento") : msg ("Recortar fragmento"));
     }
     else if (onSeek != nullptr)
     {

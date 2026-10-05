@@ -13,6 +13,7 @@ target_sources(StemLabTests PRIVATE
     ProjectFileTests.cpp
     ExportTests.cpp
     UiTests.cpp
+    InterfaceTests.cpp
     DeviceTests.cpp
     PythonTests.cpp
     ${STEMLAB_SOURCES})

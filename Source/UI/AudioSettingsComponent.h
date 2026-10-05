@@ -27,7 +27,7 @@ private:
     void timerCallback() override;
 
     AudioEngine& engine;
-    juce::ToggleButton followSystemButton { "Usar la salida predeterminada de Windows" };
+    juce::ToggleButton followSystemButton;      // "Usar la salida predeterminada de Windows"
     juce::Label hintLabel;
     juce::AudioDeviceSelectorComponent selector;
 

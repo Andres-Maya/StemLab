@@ -27,6 +27,9 @@ void runExportTests();
 /** Interfaz sin audio: + de pistas, reordenar, zoom (UiTests.cpp). */
 void runUiTests();
 
+/** Idiomas (todos los textos traducidos), temas y tutorial (InterfaceTests.cpp). */
+void runInterfaceTests();
+
 /** Tarjeta de sonido real: grabar, recuperar el dispositivo, salida de Windows (DeviceTests.cpp). */
 void runDeviceTests();
 

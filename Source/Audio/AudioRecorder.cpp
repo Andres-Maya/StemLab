@@ -19,7 +19,7 @@ juce::Result AudioRecorder::start (const juce::File& file, double sampleRate, in
     stop();
 
     if (numChannels < 1 || numChannels > 2)
-        return juce::Result::fail ("Solo se admiten grabaciones mono o estéreo."_u8);
+        return juce::Result::fail (tr ("Solo se admiten grabaciones mono o estéreo."));
 
     if (const auto created = file.getParentDirectory().createDirectory(); created.failed())
         return created;
@@ -28,7 +28,7 @@ juce::Result AudioRecorder::start (const juce::File& file, double sampleRate, in
     std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
 
     if (stream == nullptr)
-        return juce::Result::fail ("No se pudo crear el archivo:\n"_u8 + file.getFullPathName());
+        return juce::Result::fail (tr ("No se pudo crear el archivo:\n{0}", file.getFullPathName()));
 
     const auto options = juce::AudioFormatWriterOptions{}
                              .withSampleRate (sampleRate)
@@ -39,7 +39,7 @@ juce::Result AudioRecorder::start (const juce::File& file, double sampleRate, in
     auto writer = wav.createWriterFor (stream, options);
 
     if (writer == nullptr)
-        return juce::Result::fail ("No se pudo crear el escritor WAV.");
+        return juce::Result::fail (tr ("No se pudo crear el escritor WAV."));
 
     // 32768 muestras de FIFO ≈ 0,7 s a 48 kHz de margen para el disco.
     threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer.release(), writerThread, 32768);

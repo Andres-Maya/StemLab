@@ -10,7 +10,7 @@ namespace stemlab
 {
 namespace
 {
-    constexpr int rulerHeight = 24;
+
     constexpr int scrollBarHeight = 12;
     constexpr double minimumVisibleSeconds = 0.25;     // zoom máximo: 0,25 s a lo ancho
     constexpr double zoomStep = 1.5;
@@ -27,12 +27,14 @@ void TrackListView::Content::paint (juce::Graphics& g)
 
     if (isEmpty)
     {
+        // Centrado en su zona, la de las ondas (a la derecha de las cabeceras
+        // de pista), no en todo el ancho de la ventana.
         g.setColour (Palette::textDim);
         g.setFont (juce::FontOptions (16.0f));
-        g.drawFittedText ("Pulsa + para añadir una pista, arrastra aquí una canción o usa Archivo > Importar audio...\n"
-                          "Después, IA > Separar instrumentos. Para grabar, pulsa R."_u8,
-                          getLocalBounds().withTrimmedTop (AddTrackButton::height + 6).reduced (20),
-                          juce::Justification::centred, 3);
+        g.drawFittedText (tr ("Pulsa + para añadir una pista, arrastra aquí una canción o usa Archivo > Importar audio...\n"
+                              "Después, IA > Separar instrumentos. Para grabar, añade una pista y pulsa R."),
+                          getLocalBounds().withTrimmedLeft (TrackView::headerWidth).reduced (20),
+                          juce::Justification::centred, 4);
     }
 }
 
@@ -151,8 +153,9 @@ void TrackListView::RecordingLane::paint (juce::Graphics& g)
 //==============================================================================
 TrackListView::FolderHeader::FolderHeader()
 {
-    wavesButton.setButtonText ("Ondas");
-    wavesButton.setTooltip ("Abrir o cerrar la ventana de ondas de la separación"_u8);
+    wavesButton.setButtonText (tr ("Ondas"));
+    wavesButton.setTooltip (tr ("Abrir o cerrar la ventana de ondas de la separación"));
+    wavesButton.setColour (juce::TextButton::textColourOnId, Palette::onText);
     wavesButton.onClick = [this] { if (onToggleWaves != nullptr) onToggleWaves(); };
     addAndMakeVisible (wavesButton);
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
@@ -161,6 +164,7 @@ TrackListView::FolderHeader::FolderHeader()
 void TrackListView::FolderHeader::setInfo (const FolderInfo& newInfo, int memberCount)
 {
     info = newInfo;
+    info.colour = Palette::onBackground (info.colour);
     members = memberCount;
     wavesButton.setEnabled (info.canShowWaves);
     wavesButton.setToggleState (info.wavesOpen, juce::dontSendNotification);
@@ -208,7 +212,7 @@ void TrackListView::FolderHeader::paint (juce::Graphics& g)
                 juce::Justification::bottomLeft, true);
     g.setColour (Palette::textDim);
     g.setFont (juce::FontOptions (11.5f));
-    g.drawText (juce::String (members) + (members == 1 ? " pista" : " pistas"),
+    g.drawText (members == 1 ? tr ("1 pista") : tr ("{0} pistas", members),
                 textArea.withTrimmedTop ((float) getHeight() * 0.55f), juce::Justification::topLeft, true);
 
     g.setColour (Palette::outline);
@@ -258,12 +262,12 @@ TrackListView::TrackListView (AudioEngine& audioEngine)
     addAndMakeVisible (horizontalScroll);
 
     emptyAddButton.colour = Palette::accent;
-    emptyAddButton.setTooltip ("Añadir una pista (Ctrl+T)"_u8);
+    emptyAddButton.setTooltip (tr ("Añadir una pista (Ctrl+T)"));
     emptyAddButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     emptyAddButton.onClick = [this] { if (onAddTrack != nullptr) onAddTrack (-1, {}); };
     content.addAndMakeVisible (emptyAddButton);
 
-    addBelowButton.setTooltip ("Añadir una pista debajo"_u8);
+    addBelowButton.setTooltip (tr ("Añadir una pista debajo"));
     addBelowButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     addBelowButton.onClick = [this]
     {
@@ -598,10 +602,10 @@ void TrackListView::showFolderMenu (const juce::String& folderId)
         return;
 
     juce::PopupMenu menu;
-    menu.addItem (toggleFolderId, folder->expanded ? "Plegar carpeta" : "Desplegar carpeta");
-    menu.addItem (toggleWavesId, folder->wavesOpen ? "Cerrar ondas" : "Abrir ondas", folder->canShowWaves);
+    menu.addItem (toggleFolderId, folder->expanded ? tr ("Plegar carpeta") : tr ("Desplegar carpeta"));
+    menu.addItem (toggleWavesId, folder->wavesOpen ? tr ("Cerrar ondas") : tr ("Abrir ondas"), folder->canShowWaves);
     menu.addSeparator();
-    menu.addItem (deleteFolderId, "Eliminar carpeta...");
+    menu.addItem (deleteFolderId, tr ("Eliminar carpeta..."));
 
     menu.showMenuAsync (juce::PopupMenu::Options(),
                         [safe = juce::Component::SafePointer<TrackListView> (this), folderId] (int result)
@@ -627,15 +631,15 @@ void TrackListView::showTrackMenu (TrackView& view)
         return;
 
     juce::PopupMenu menu;
-    menu.addItem (renameId, "Cambiar nombre (F2)");
-    menu.addItem (addBelowId, "Añadir pista debajo"_u8);
+    menu.addItem (renameId, tr ("Cambiar nombre (F2)"));
+    menu.addItem (addBelowId, tr ("Añadir pista debajo"));
     menu.addSeparator();
-    menu.addItem (copyId, "Copiar pista (Ctrl+C)");
-    menu.addItem (cutId, "Cortar pista (Ctrl+X)");
-    menu.addItem (pasteBelowId, "Pegar pista debajo (Ctrl+V)", canPasteTrack != nullptr && canPasteTrack());
+    menu.addItem (copyId, tr ("Copiar pista (Ctrl+C)"));
+    menu.addItem (cutId, tr ("Cortar pista (Ctrl+X)"));
+    menu.addItem (pasteBelowId, tr ("Pegar pista debajo (Ctrl+V)"), canPasteTrack != nullptr && canPasteTrack());
     menu.addSeparator();
-    menu.addItem (moveUpId, "Subir pista", index > 0);
-    menu.addItem (moveDownId, "Bajar pista", index + 1 < static_cast<int> (rows.size()));
+    menu.addItem (moveUpId, tr ("Subir pista"), index > 0);
+    menu.addItem (moveDownId, tr ("Bajar pista"), index + 1 < static_cast<int> (rows.size()));
 
     // Carpetas: sacar de la suya o meter en otra (de las que se ven).
     const auto* current = findFolder (view.getTrack().getFolderId());
@@ -650,13 +654,13 @@ void TrackListView::showTrackMenu (TrackView& view)
         menu.addSeparator();
 
         if (current != nullptr)
-            menu.addItem (leaveFolderId, "Sacar de la carpeta \"" + current->name + "\"");
+            menu.addItem (leaveFolderId, tr ("Sacar de la carpeta \"{0}\"", current->name));
 
-        menu.addSubMenu ("Meter en la carpeta", into, into.getNumItems() > 0);
+        menu.addSubMenu (tr ("Meter en la carpeta"), into, into.getNumItems() > 0);
     }
 
     menu.addSeparator();
-    menu.addItem (deleteId, "Eliminar pista...");
+    menu.addItem (deleteId, tr ("Eliminar pista..."));
 
     menu.showMenuAsync (juce::PopupMenu::Options(),
                         [safe = juce::Component::SafePointer<TrackListView> (this), track = view.getTrackPointer()] (int result)

@@ -1,5 +1,7 @@
 #include "AudioTrack.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 #include <algorithm>
 
 namespace stemlab
@@ -13,8 +15,8 @@ namespace
 
 AudioTrack::AudioTrack (juce::String trackName)
     : name (std::move (trackName)),
-      volume (Parameter::continuous ("volume", "Volumen", juce::NormalisableRange<float> (-60.0f, 12.0f, 0.1f, 2.0f), 0.0f, "dB")),
-      pan (Parameter::continuous ("pan", "Paneo", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f)),
+      volume (Parameter::continuous ("volume", msg ("Volumen"), juce::NormalisableRange<float> (-60.0f, 12.0f, 0.1f, 2.0f), 0.0f, "dB")),
+      pan (Parameter::continuous ("pan", msg ("Paneo"), juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f)),
       mute (Parameter::toggle ("mute", "Mute", false)),
       solo (Parameter::toggle ("solo", "Solo", false))
 {

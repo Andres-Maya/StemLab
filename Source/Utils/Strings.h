@@ -2,13 +2,17 @@
 
 #include <juce_core/juce_core.h>
 
+#include "Localisation.h"       // tr(): los textos de la interfaz, en el idioma elegido
+
 namespace stemlab
 {
-    /** Literal para textos con acentos: "Batería"_u8.
+    /** Literal para textos con acentos que no se traducen: "Sesión"_u8.
 
         El proyecto se compila como UTF-8 (/utf-8 en MSVC), pero juce::String
         interpreta un const char* como ASCII (y lanza un jassert si no lo es),
         así que los textos con caracteres no ASCII se convierten explícitamente.
+        Los textos que ve el usuario van con tr() (Localisation.h), que ya
+        hace esa conversión.
     */
     inline juce::String operator""_u8 (const char* text, std::size_t length)
     {

@@ -1,6 +1,7 @@
 #include "EffectPanel.h"
 
 #include "StemLabLookAndFeel.h"
+#include "Utils/Strings.h"
 
 namespace stemlab
 {
@@ -16,7 +17,7 @@ namespace
 EffectPanel::EffectPanel (AudioEffect& audioEffect)
     : effect (audioEffect)
 {
-    enableButton.setTooltip ("Activar / desactivar");
+    enableButton.setTooltip (tr ("Activar / desactivar"));
     enableAttachment = std::make_unique<ButtonAttachment> (effect.getEnabledParameter(), enableButton);
     addAndMakeVisible (enableButton);
 
@@ -36,7 +37,7 @@ EffectPanel::EffectPanel (AudioEffect& audioEffect)
 
             case Parameter::Kind::toggle:
             {
-                auto button = std::make_unique<juce::ToggleButton> (parameter->getName());
+                auto button = std::make_unique<juce::ToggleButton> (tr (parameter->getName()));
                 control.attachment = std::make_unique<ButtonAttachment> (*parameter, *button);
                 control.editor = std::move (button);
                 break;
@@ -53,7 +54,8 @@ EffectPanel::EffectPanel (AudioEffect& audioEffect)
             }
         }
 
-        control.label = std::make_unique<juce::Label> (juce::String(), parameter->getName());
+        // Los nombres de parámetros y efectos están en español: se traducen al mostrarlos.
+        control.label = std::make_unique<juce::Label> (juce::String(), tr (parameter->getName()));
         control.label->setFont (juce::FontOptions (11.0f));
         control.label->setColour (juce::Label::textColourId, Palette::textDim);
         control.label->setJustificationType (juce::Justification::centred);
@@ -113,7 +115,7 @@ void EffectPanel::paint (juce::Graphics& g)
 
     g.setColour (effect.isEnabled() ? Palette::text : Palette::textDim);
     g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-    g.drawText (effect.getName(), getLocalBounds().removeFromTop (headerHeight).reduced (padding + 2, 0),
+    g.drawText (tr (effect.getName()), getLocalBounds().removeFromTop (headerHeight).reduced (padding + 2, 0),
                 juce::Justification::centredLeft, true);
 }
 

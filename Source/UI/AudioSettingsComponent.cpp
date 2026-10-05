@@ -13,11 +13,12 @@ AudioSettingsComponent::AudioSettingsComponent (AudioEngine& audioEngine)
                 false, false, true, false)
 {
     followSystemButton.setToggleState (engine.isFollowingSystemOutput(), juce::dontSendNotification);
+    followSystemButton.setButtonText (tr ("Usar la salida predeterminada de Windows"));
     followSystemButton.onClick = [this] { engine.setFollowSystemOutput (followSystemButton.getToggleState()); };
     addAndMakeVisible (followSystemButton);
 
-    hintLabel.setText ("StemLab cambia solo a los audífonos al conectarlos, como el resto de programas. "
-                       "Si eliges otra salida abajo, esta opción se desactiva."_u8,
+    hintLabel.setText (tr ("StemLab cambia solo a los audífonos al conectarlos, como el resto de programas. "
+                           "Si eliges otra salida abajo, esta opción se desactiva."),
                        juce::dontSendNotification);
     hintLabel.setFont (juce::FontOptions (12.0f));
     hintLabel.setColour (juce::Label::textColourId, Palette::textDim);

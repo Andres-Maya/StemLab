@@ -1,10 +1,12 @@
 #include "GainEffect.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 namespace stemlab
 {
 GainEffect::GainEffect()
     : AudioEffect ("gain", "Gain", true),
-      gainDb (addParameter (Parameter::continuous ("gain", "Ganancia",
+      gainDb (addParameter (Parameter::continuous ("gain", msg ("Ganancia"),
                                                    juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f),
                                                    0.0f, "dB")))
 {

@@ -1,14 +1,16 @@
 #include "CompressorEffect.h"
 
+#include "Utils/Localisation.h"      // msg(): los nombres se traducen al mostrarlos
+
 namespace stemlab
 {
 CompressorEffect::CompressorEffect()
-    : AudioEffect ("compressor", "Compresor", false),
-      threshold (addParameter (Parameter::continuous ("threshold", "Umbral",
+    : AudioEffect ("compressor", msg ("Compresor"), false),
+      threshold (addParameter (Parameter::continuous ("threshold", msg ("Umbral"),
                                                       juce::NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, "dB"))),
       ratio     (addParameter (Parameter::continuous ("ratio", "Ratio",
                                                       juce::NormalisableRange<float> (1.0f, 20.0f, 0.1f, 0.5f), 4.0f, ":1"))),
-      attack    (addParameter (Parameter::continuous ("attack", "Ataque",
+      attack    (addParameter (Parameter::continuous ("attack", msg ("Ataque"),
                                                       juce::NormalisableRange<float> (0.1f, 200.0f, 0.1f, 0.4f), 10.0f, "ms"))),
       release   (addParameter (Parameter::continuous ("release", "Release",
                                                       juce::NormalisableRange<float> (5.0f, 1000.0f, 1.0f, 0.4f), 120.0f, "ms"))),

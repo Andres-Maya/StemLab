@@ -286,7 +286,7 @@ void ProjectManager::newProject()
                             .getChildFile ("Sesion-" + juce::Time::getCurrentTime().formatted ("%Y%m%d-%H%M%S"))
                             .getNonexistentSibling (false);
 
-    project = Project ("Proyecto sin título"_u8, folder, true);
+    project = Project (tr ("Proyecto sin título"), folder, true);
 
     // Entre llaves: en Release DBG no hace nada (sin ellas, aviso C4390).
     if (const auto result = project.createFolderStructure(); result.failed())
@@ -320,8 +320,8 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
     if (projectFile == juce::File())
     {
         if (onDone != nullptr)
-            onDone (juce::Result::fail ("No hay ningún proyecto de StemLab (.stemlab) en la carpeta:\n"_u8
-                                        + projectFileOrFolder.getFullPathName()));
+            onDone (juce::Result::fail (tr ("No hay ningún proyecto de StemLab (.stemlab) en la carpeta:\n{0}",
+                                            projectFileOrFolder.getFullPathName())));
 
         return;
     }
@@ -364,7 +364,7 @@ void ProjectManager::openProject (const juce::File& projectFileOrFolder, Callbac
 juce::Result ProjectManager::save()
 {
     if (project.isTemporary())
-        return juce::Result::fail ("El proyecto aún no tiene carpeta: usa \"Guardar como\"."_u8);
+        return juce::Result::fail (tr ("El proyecto aún no tiene carpeta: usa \"Guardar como\"."));
 
     if (const auto result = project.createFolderStructure(); result.failed())
         return result;
@@ -385,13 +385,13 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
     if (newFolder != oldFolder)
     {
         if (newFolder.existsAsFile())
-            return juce::Result::fail ("Ya existe un archivo con ese nombre.");
+            return juce::Result::fail (tr ("Ya existe un archivo con ese nombre."));
 
         const auto isOtherProject = Project::findProjectFileIn (newFolder).existsAsFile();
 
         if (newFolder.isDirectory() && ! isOtherProject
             && newFolder.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0)
-            return juce::Result::fail ("La carpeta ya existe y no está vacía:\n"_u8 + newFolder.getFullPathName());
+            return juce::Result::fail (tr ("La carpeta ya existe y no está vacía:\n{0}", newFolder.getFullPathName()));
 
         if (const auto result = newFolder.createDirectory(); result.failed())
             return result;
@@ -401,7 +401,7 @@ juce::Result ProjectManager::saveAs (const juce::File& newFolder)
             const auto source = oldFolder.getChildFile (subfolder);
 
             if (source.isDirectory() && ! source.copyDirectoryTo (newFolder.getChildFile (subfolder)))
-                return juce::Result::fail ("No se pudo copiar la carpeta " + subfolder);
+                return juce::Result::fail (tr ("No se pudo copiar la carpeta {0}", subfolder));
         }
 
         // Los clips (también los del historial) apuntan ahora a las copias.
@@ -480,7 +480,7 @@ void ProjectManager::importAudio (const juce::Array<juce::File>& files, Callback
     for (const auto& file : files)
         tracks.push_back ({ file.getFileNameWithoutExtension(), file, 0.0, true });
 
-    addTracks (std::move (tracks), std::move (onDone), "Importar audio");
+    addTracks (std::move (tracks), std::move (onDone), msg ("Importar audio"));
 }
 
 void ProjectManager::addTracks (std::vector<NewTrack> tracks, Callback onDone, const juce::String& undoName)
@@ -510,7 +510,7 @@ std::shared_ptr<AudioTrack> ProjectManager::addEmptyTrack (const juce::String& b
     track->setFolderId (folderId);
     performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::add, engine.getMixer(),
                                                             [this] { notifyTracksEdited(); }, track, insertIndex),
-                     "Añadir pista"_u8);
+                     msg ("Añadir pista"));
     return track;
 }
 
@@ -519,7 +519,7 @@ std::shared_ptr<AudioTrack> ProjectManager::pasteTrack (const AudioTrack& copyFr
     auto track = copyFrom.createCopy (createCopyName (copyFrom.getName()));
     performUndoable (std::make_unique<TrackPresenceAction> (TrackPresenceAction::Kind::add, engine.getMixer(),
                                                             [this] { notifyTracksEdited(); }, track, insertIndex),
-                     "Pegar pista");
+                     msg ("Pegar pista"));
     return track;
 }
 
@@ -544,7 +544,7 @@ void ProjectManager::trackMoved (const std::shared_ptr<AudioTrack>& track, int f
     if (track != nullptr && fromIndex != toIndex)
         performUndoable (std::make_unique<MoveTrackAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
                                                             track, fromIndex, toIndex),
-                         "Mover pista");
+                         msg ("Mover pista"));
 }
 
 const TrackFolder* ProjectManager::findFolder (const juce::String& folderId) const
@@ -606,10 +606,10 @@ void ProjectManager::moveTrackToFolder (const std::shared_ptr<AudioTrack>& track
     if (sameFolder && indexOfTrack (engine.getMixer(), track.get()) == mixerIndex)
         return;
 
-    const auto name = sameFolder ? juce::String ("Mover pista")
-                    : folderId.isEmpty() ? juce::String ("Sacar de la carpeta")
-                    : track->getFolderId().isEmpty() ? juce::String ("Meter en la carpeta")
-                    : juce::String ("Mover a otra carpeta");
+    const auto name = sameFolder ? msg ("Mover pista")
+                    : folderId.isEmpty() ? msg ("Sacar de la carpeta")
+                    : track->getFolderId().isEmpty() ? msg ("Meter en la carpeta")
+                    : msg ("Mover a otra carpeta");
 
     performUndoable (std::make_unique<FolderMoveAction> (engine.getMixer(), [this] { notifyTracksEdited(); },
                                                          track, folderId, mixerIndex),
@@ -624,7 +624,7 @@ void ProjectManager::removeFolder (const juce::String& folderId)
         return;
 
     // Las pistas y la carpeta, en una sola transacción.
-    undoManager.beginNewTransaction ("Eliminar carpeta");
+    undoManager.beginNewTransaction (msg ("Eliminar carpeta"));
 
     for (const auto& track : getFolderTracks (folderId))
         undoManager.perform (new TrackPresenceAction (TrackPresenceAction::Kind::remove, engine.getMixer(),
@@ -638,7 +638,7 @@ void ProjectManager::trackRenamed (const std::shared_ptr<AudioTrack>& track, con
     if (track != nullptr && track->getName() != oldName)
         performUndoable (std::make_unique<RenameTrackAction> ([this] { notifyTracksEdited(); }, track,
                                                               oldName, track->getName()),
-                         "Cambiar nombre de la pista");
+                         msg ("Cambiar nombre de la pista"));
 }
 
 std::shared_ptr<AudioTrack> ProjectManager::getArmedTrack() const
@@ -665,7 +665,7 @@ void ProjectManager::addRecording (const RecordingInfo& recording, std::weak_ptr
         recording.file.deleteFile();
 
         if (onDone != nullptr)
-            onDone (juce::Result::fail ("No se grabó audio."_u8));
+            onDone (juce::Result::fail (tr ("No se grabó audio.")));
 
         return;
     }
@@ -676,7 +676,7 @@ void ProjectManager::addRecording (const RecordingInfo& recording, std::weak_ptr
                             / recording.sampleRate;
 
     TrackRequest request;
-    request.name = createTrackName ("Grabación"_u8);
+    request.name = createTrackName (tr ("Grabación"));
     request.target = std::move (target);
     request.clips.push_back ({ recording.file, startSeconds, 0.0, -1.0 });
 
@@ -766,7 +766,7 @@ juce::String ProjectManager::createCopyName (const juce::String& name) const
 
     for (int number = 1;; ++number)
     {
-        const auto candidate = name + (number == 1 ? juce::String (" (copia)") : " (copia " + juce::String (number) + ")");
+        const auto candidate = number == 1 ? tr ("{0} (copia)", name) : tr ("{0} (copia {1})", name, number);
 
         if (! isTaken (candidate))
             return candidate;
@@ -836,7 +836,7 @@ void ProjectManager::loadTracks (std::vector<TrackRequest> requests, Callback on
 
                     if (audioFolder.createDirectory().failed() || ! file.copyFileTo (copy))
                     {
-                        errors.add (file.getFileName() + ": no se pudo copiar al proyecto.");
+                        errors.add (tr ("{0}: no se pudo copiar al proyecto.", file.getFileName()));
                         continue;
                     }
 
@@ -949,7 +949,7 @@ void ProjectManager::finishLoading (const std::vector<TrackRequest>& requests, c
                     updated.push_back (std::move (clip));
 
             if (updated.size() > before)
-                editClips (target, std::move (updated), "Grabar fragmento");
+                editClips (target, std::move (updated), msg ("Grabar fragmento"));
 
             continue;
         }

@@ -24,6 +24,12 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    // Las zonas de la barra (para el tutorial), en coordenadas de la barra.
+    juce::Rectangle<int> getButtonsArea() const;
+    juce::Rectangle<int> getTimeArea() const;
+    juce::Rectangle<int> getInputArea() const;
+    juce::Rectangle<int> getMasterArea() const;
+
 private:
     void timerCallback() override;
 
@@ -38,7 +44,7 @@ private:
     juce::Label timeLabel;
     juce::Label bpmCaption { {}, "BPM" };
     juce::Label bpmLabel;
-    juce::Label inputCaption { {}, "Entrada" };
+    juce::Label inputCaption;                   // "Entrada"
     juce::Slider inputSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
     LevelMeter inputMeter;
     juce::Label deviceLabel;

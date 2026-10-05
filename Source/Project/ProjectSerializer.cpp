@@ -12,7 +12,7 @@ namespace
 juce::Result ProjectSerializer::write (const Project& project, const ProjectDocument& document)
 {
     if (! project.getProjectFile().replaceWithText (toJson (project, document)))
-        return juce::Result::fail ("No se pudo escribir " + project.getProjectFile().getFullPathName());
+        return juce::Result::fail (tr ("No se pudo escribir {0}", project.getProjectFile().getFullPathName()));
 
     return juce::Result::ok();
 }
@@ -88,20 +88,20 @@ juce::String ProjectSerializer::toJson (const Project& project, const ProjectDoc
 juce::Result ProjectSerializer::read (const juce::File& projectFile, Project& project, ProjectDocument& document)
 {
     if (! projectFile.existsAsFile())
-        return juce::Result::fail ("No existe " + projectFile.getFullPathName());
+        return juce::Result::fail (tr ("No existe {0}", projectFile.getFullPathName()));
 
     juce::var root;
 
     if (const auto parsed = juce::JSON::parse (projectFile.loadFileAsString(), root); parsed.failed())
-        return juce::Result::fail (projectFile.getFileName() + " no es un JSON válido: "_u8 + parsed.getErrorMessage());
+        return juce::Result::fail (tr ("{0} no es un JSON válido: {1}", projectFile.getFileName(), parsed.getErrorMessage()));
 
     if (root.getProperty ("format", {}).toString() != formatName)
-        return juce::Result::fail ("El archivo no es un proyecto de StemLab.");
+        return juce::Result::fail (tr ("El archivo no es un proyecto de StemLab."));
 
     const auto version = static_cast<int> (root.getProperty ("version", 0));
 
     if (version > currentVersion)
-        return juce::Result::fail ("El proyecto se creó con una versión más reciente de StemLab."_u8);
+        return juce::Result::fail (tr ("El proyecto se creó con una versión más reciente de StemLab."));
 
     project = Project (root.getProperty ("name", projectFile.getParentDirectory().getFileName()).toString(),
                        projectFile.getParentDirectory(), false);

@@ -1,5 +1,7 @@
 #include "ParameterAttachments.h"
 
+#include "Utils/Strings.h"
+
 namespace stemlab
 {
 SliderAttachment::SliderAttachment (Parameter& p, juce::Slider& s)
@@ -55,7 +57,11 @@ ComboBoxAttachment::ComboBoxAttachment (Parameter& p, juce::ComboBox& c)
     : ParameterAttachment (p), comboBox (c)
 {
     comboBox.clear (juce::dontSendNotification);
-    comboBox.addItemList (parameter.getChoices(), 1);
+
+    // Las opciones ("Suave", "Dura"...) están en español: se traducen al mostrarlas.
+    for (int i = 0; i < parameter.getChoices().size(); ++i)
+        comboBox.addItem (tr (parameter.getChoices()[i]), i + 1);
+
     comboBox.setSelectedId (parameter.getIndex() + 1, juce::dontSendNotification);
     comboBox.onChange = [this] { parameter.set (static_cast<float> (comboBox.getSelectedId() - 1)); };
 }

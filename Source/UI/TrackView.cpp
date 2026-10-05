@@ -12,8 +12,8 @@ namespace
 TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour trackColour,
                       juce::AudioFormatManager& formatManager, juce::AudioThumbnailCache& cache)
     : track (std::move (audioTrack)),
-      colour (trackColour),
-      deleteButton ("Eliminar pista", IconButton::Icon::close),
+      colour (Palette::onBackground (trackColour)),
+      deleteButton (tr ("Eliminar pista"), IconButton::Icon::close),
       meter ([t = track.get()] (int channel) { return t->getAndResetPeak (channel); }),
       waveform (*track, formatManager, cache),
       volumeAttachment (track->getVolume(), volumeSlider),
@@ -24,7 +24,7 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
     nameLabel.setText (track->getName(), juce::dontSendNotification);
     nameLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
     nameLabel.setEditable (false, true);
-    nameLabel.setTooltip ("Doble clic (o F2) para cambiar el nombre. Arrastra para mover la pista.");
+    nameLabel.setTooltip (tr ("Doble clic (o F2) para cambiar el nombre. Arrastra para mover la pista."));
     nameLabel.onTextChange = [this]
     {
         const auto newName = nameLabel.getText().trim();
@@ -53,6 +53,10 @@ TrackView::TrackView (std::shared_ptr<AudioTrack> audioTrack, juce::Colour track
 
     muteButton.setColour (juce::TextButton::buttonOnColourId, Palette::mute);
     soloButton.setColour (juce::TextButton::buttonOnColourId, Palette::solo);
+    muteButton.setColour (juce::TextButton::textColourOnId, Palette::onText);
+    soloButton.setColour (juce::TextButton::textColourOnId, Palette::onText);
+    muteButton.setTooltip (tr ("Silenciar (mute)"));
+    soloButton.setTooltip (tr ("Solo"));
     addAndMakeVisible (muteButton);
     addAndMakeVisible (soloButton);
 
@@ -147,7 +151,7 @@ void TrackView::paint (juce::Graphics& g)
     // Dentro de una carpeta: una franja de su color, como sangría.
     if (! folderColour.isTransparent())
     {
-        g.setColour (folderColour.withAlpha (0.55f));
+        g.setColour (Palette::onBackground (folderColour).withAlpha (0.55f));
         g.fillRect (header.removeFromLeft (6.0f));
         header.removeFromLeft (2.0f);
     }

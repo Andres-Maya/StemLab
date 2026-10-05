@@ -38,7 +38,7 @@ bool AIProcessManager::start (SeparationRequest newRequest, FinishedCallback onF
     finishedCallback = std::move (onFinished);
     result = {};
     progress.store (-1.0);
-    setStatus ("Preparando separación..."_u8);
+    setStatus (tr ("Preparando separación..."));
     finished.store (false);
     busy.store (true);
 
@@ -52,7 +52,7 @@ void AIProcessManager::cancel()
     if (! busy.load())
         return;
 
-    setStatus ("Cancelando..."_u8);
+    setStatus (tr ("Cancelando..."));
     signalThreadShouldExit();
     separator->cancel();
 }
@@ -80,9 +80,9 @@ void AIProcessManager::timerCallback()
     busy.store (false);
 
     progress.store (result.status.wasOk() ? 1.0 : 0.0);
-    setStatus (result.cancelled ? "Separación cancelada."_u8
-                                : (result.status.wasOk() ? "Separación completada."_u8
-                                                         : "Error en la separación."_u8));
+    setStatus (result.cancelled ? tr ("Separación cancelada.")
+                                : (result.status.wasOk() ? tr ("Separación completada.")
+                                                         : tr ("Error en la separación.")));
 
     if (auto callback = std::exchange (finishedCallback, nullptr))
         callback (result);
