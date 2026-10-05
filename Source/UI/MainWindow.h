@@ -28,6 +28,11 @@ public:
     /** Abrir un proyecto (desde la línea de comandos, "Abrir con"...). */
     void openProjectFile (const juce::File& file);
 
+    /** Al arrancar StemLab: abre ese proyecto o, si no hay ninguno (archivo
+        vacío), muestra el tutorial. Así el tutorial sale siempre que se abre
+        StemLab sin un proyecto, y no tapa el proyecto cuando se abre uno. */
+    void start (const juce::File& projectFile);
+
     /** Cambia el idioma y el tema: los guarda en los ajustes y vuelve a crear
         la interfaz (los componentes toman sus textos y colores al construirse).
         El proyecto, el motor de audio y la pista seleccionada no cambian.

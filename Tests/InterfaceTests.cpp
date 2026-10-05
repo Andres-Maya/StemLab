@@ -6,6 +6,7 @@
 #include "Audio/AudioEngine.h"
 #include "Project/ProjectManager.h"
 #include "UI/MainComponent.h"
+#include "UI/MainWindow.h"
 #include "UI/StemLabLookAndFeel.h"
 #include "Utils/Strings.h"
 
@@ -218,7 +219,7 @@ namespace
             window.setSize (1280, 820);
             CHECK (window.getMenuBarNames().size() == 7 && window.getMenuBarNames()[5] == "Ver" && window.getMenuBarNames()[6] == "Ayuda",
                    "menús: Archivo, Editar, Proyecto, Audio, IA, Ver y Ayuda");
-            CHECK (window.getTour() == nullptr, "sin ajustes (pruebas) el tutorial no se abre solo");
+            CHECK (window.getTour() == nullptr, "el tutorial no se abre al crear la ventana (lo decide el arranque)");
             saveSnapshot (window.createComponentSnapshot (window.getLocalBounds()), "ventana-oscura-es.png");
 
             // Cambiar de idioma o de tema lo hace quien contiene la ventana (MainWindow).
@@ -356,6 +357,81 @@ namespace
         lookAndFeel.applyTheme();
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
+
+    /** El arranque, con la ventana de verdad y un archivo de ajustes (como
+        StemLabApplication): sin proyecto se abre el tutorial, siempre. */
+    void testStartup()
+    {
+        section ("Arranque: sin proyecto se abre el tutorial, siempre");
+
+        StemLabLookAndFeel lookAndFeel;
+        juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+
+        const auto settingsFile = outputFolder().getChildFile ("arranque.settings");
+        settingsFile.deleteFile();
+
+        juce::PropertiesFile::Options options;
+        options.applicationName = "StemLabTests";
+        options.filenameSuffix = ".settings";
+
+        AudioEngine engine;
+        ProjectManager projects (engine);
+        AIProcessManager ai (std::make_unique<DemucsSeparator> (DemucsSeparator::findDefaultSettings()));
+        const auto tourOf = [] (MainWindow& window) -> TourOverlay*
+        {
+            auto* content = dynamic_cast<MainComponent*> (window.getContentComponent());
+            return content != nullptr ? content->getTour() : nullptr;
+        };
+
+        for (int launch = 1; launch <= 2; ++launch)
+        {
+            juce::PropertiesFile settings (settingsFile, options);
+            MainWindow window ("StemLab", engine, projects, ai, &settings);
+            CHECK (tourOf (window) == nullptr, "la ventana se crea sin tutorial (aún no se sabe si se abre un proyecto)");
+
+            window.start ({});
+            runLoopUntil ([] { return false; }, 800);
+
+            auto* tour = tourOf (window);
+            auto* content = window.getContentComponent();
+            CHECK (tour != nullptr && tour->isShowing() && tour->getBounds() == content->getLocalBounds() && tour->hasKeyboardFocus (true),
+                   "arranque " + juce::String (launch) + " sin proyecto: el tutorial, a la vista, ocupa la ventana y tiene el teclado");
+
+            if (tour != nullptr)
+            {
+                if (launch == 1)
+                    saveSnapshot (window.createComponentSnapshot (window.getLocalBounds()), "arranque.png");
+
+                tour->close();
+                runLoopUntil ([&] { return tourOf (window) == nullptr; }, 1000);
+            }
+
+            CHECK (tourOf (window) == nullptr, "Saltar tutorial lo cierra");
+            settings.saveIfNeeded();
+        }
+
+        // Abriendo un proyecto ("Abrir con", doble clic en un .stemlab), no.
+        {
+            const auto folder = outputFolder().getChildFile ("Arranque");
+            folder.deleteRecursively();
+            projects.addEmptyTrack ("Pista");
+            CHECK (projects.saveAs (folder).wasOk(), "se guarda un proyecto de prueba");
+            const auto projectFile = projects.getProject().getProjectFile();
+            projects.newProject();
+
+            juce::PropertiesFile settings (settingsFile, options);
+            MainWindow window ("StemLab", engine, projects, ai, &settings);
+            window.start (projectFile);
+            runLoopUntil ([&] { return ! projects.isLoading() && ! engine.getMixer().getTracks().empty(); }, 5000);
+            CHECK (tourOf (window) == nullptr && engine.getMixer().getTracks().size() == 1,
+                   "al arrancar con un proyecto se abre el proyecto, sin tutorial");
+            projects.newProject();
+            folder.deleteRecursively();
+        }
+
+        settingsFile.deleteFile();
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+    }
 }
 
 void runInterfaceTests()
@@ -363,5 +439,6 @@ void runInterfaceTests()
     testLanguages();
     testThemes();
     testWindowAndTour();
+    testStartup();
 }
 }

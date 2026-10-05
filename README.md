@@ -307,7 +307,7 @@ copia en `installer/requirements.lock.txt` la salida de `pip freeze --exclude pi
 **Tema, idioma y tutorial**
 
 - **Ver → Tema**: **oscuro** (el de siempre) o **claro**. **Ver → Idioma**: **español** o **inglés**; la primera vez se usa el idioma de Windows. Los dos se guardan en los ajustes de StemLab. Al cambiarlos, la ventana se vuelve a dibujar con el proyecto tal como estaba (no se puede en mitad de una grabación, una carga o una separación). La ventana de ondas de la separación es siempre oscura.
-- **Ayuda → Tutorial**: recorre la ventana parte por parte. Oscurece todo menos la zona de la que habla y pone al lado una tarjeta, con una flecha, que explica qué hace (**→** o **Intro**: siguiente; **←**: atrás; **Esc**: salir). Se abre solo la primera vez que arrancas StemLab, y en su primer paso deja elegir idioma y tema.
+- **Ayuda → Tutorial**: recorre la ventana parte por parte. Oscurece todo menos la zona de la que habla y pone al lado una tarjeta, con una flecha, que explica qué hace (**→** o **Intro**: siguiente; **←**: atrás; **Esc**: salir). Se abre solo **cada vez que arrancas StemLab sin un proyecto** (no al abrir un `.stemlab`); **Saltar tutorial** o **Esc** lo cierran. En su primer paso deja elegir idioma y tema.
 - Para añadir un idioma: una tabla como `Source/Utils/Translations_en.cpp` (la clave es el texto en español del código, `tr ("...")`), su entrada en `Localisation::getLanguages()` y en `getDictionary()`, y el archivo en `CMakeLists.txt`. Las pruebas avisan de los textos que falten.
 
 Atajos de teclado:

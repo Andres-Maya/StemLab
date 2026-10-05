@@ -76,8 +76,9 @@ public:
         mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *projects, *ai,
                                                    settings.getUserSettings());
 
-        if (const auto file = projectFileFromCommandLine (commandLine); file != juce::File())
-            mainWindow->openProjectFile (file);
+        // Con un .stemlab ("Abrir con", doble clic) se abre ese proyecto; sin
+        // ninguno, StemLab empieza con el tutorial.
+        mainWindow->start (projectFileFromCommandLine (commandLine));
 
         // Los .stemlab con el icono de StemLab y doble clic para abrirlos
         // (solo escribe en el registro del usuario si no estaba ya así).

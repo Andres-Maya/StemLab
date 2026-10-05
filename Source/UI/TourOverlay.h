@@ -15,8 +15,8 @@ namespace stemlab
     vista la zona de la que se habla (con un borde que late) y pone al lado
     una tarjeta, con una flecha que la señala, que explica qué hace.
 
-    Aparece solo la primera vez que se abre StemLab y después desde
-    Ayuda > Tutorial. Siguiente: → o Intro. Atrás: ←. Salir: Esc.
+    Aparece cada vez que se abre StemLab sin un proyecto (se cierra con
+    "Saltar tutorial" o Esc) y desde Ayuda > Tutorial. Siguiente: → o Intro. Atrás: ←. Salir: Esc.
 
     Ocupa toda la ventana principal y se queda con el ratón y el teclado: los
     atajos de la aplicación no actúan mientras está abierto.

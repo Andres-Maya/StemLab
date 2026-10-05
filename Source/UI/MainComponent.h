@@ -50,8 +50,8 @@ public:
     void toggleFolderWindow (const juce::String& folderId);
     bool isFolderWindowOpen (const juce::String& folderId) const;
 
-    /** El tutorial: recorre la ventana parte por parte (Ayuda > Tutorial y la
-        primera vez que se abre StemLab). */
+    /** El tutorial: recorre la ventana parte por parte (Ayuda > Tutorial y
+        cada vez que se abre StemLab sin un proyecto). */
     void showTour();
     TourOverlay* getTour() const noexcept       { return tour.get(); }
 

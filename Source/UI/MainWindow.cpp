@@ -38,11 +38,14 @@ MainWindow::MainWindow (const juce::String& name, AudioEngine& audioEngine, Proj
     // Para que los atajos de teclado funcionen desde el principio.
     if (auto* content = getContentComponent())
         content->grabKeyboardFocus();
+}
 
-    // La primera vez que se abre StemLab, el tutorial.
-    if (settings != nullptr && ! settings->getBoolValue ("tutorialSeen", false))
-        if (auto* content = dynamic_cast<MainComponent*> (getContentComponent()))
-            content->showTour();
+void MainWindow::start (const juce::File& projectFile)
+{
+    if (projectFile != juce::File())
+        openProjectFile (projectFile);
+    else if (auto* content = dynamic_cast<MainComponent*> (getContentComponent()))
+        content->showTour();
 }
 
 MainComponent* MainWindow::createContent()

@@ -1605,9 +1605,6 @@ void MainComponent::showTour()
 
             safe->tour.reset();
             safe->grabKeyboardFocus();
-
-            if (safe->settings != nullptr)
-                safe->settings->setValue ("tutorialSeen", true);
         });
     };
     tour->onLanguageChosen = [this] (Language language) { changeInterface (language, Palette::getTheme(), true); };
