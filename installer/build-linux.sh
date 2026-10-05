@@ -97,10 +97,24 @@ step '3/4 Pruebas (rápidas + MP3 y separación con el Python del paquete)'
 # Las pruebas crean ventanas: sin pantalla (GitHub Actions) se usa una virtual.
 runner=()
 if [ -z "${DISPLAY:-}" ]; then
-    runner=(xvfb-run --auto-servernum)
+    runner=(xvfb-run --auto-servernum --server-args='-screen 0 1600x1000x24' --error-file="$out/xvfb.log")
 fi
 
-STEMLAB_PYTHON="$python" "${runner[@]}" "$tests" --python --output "$out/test-output"
+# stdbuf: cada línea sale al momento (si las pruebas se cortan, se ve dónde).
+run_tests() { STEMLAB_PYTHON="$python" "${runner[@]}" stdbuf -oL -eL "$@"; }
+
+if ! run_tests "$tests" --python --output "$out/test-output"; then
+    echo
+    echo '== Las pruebas han fallado. Diagnóstico:'
+    [ -f "$out/xvfb.log" ] && cat "$out/xvfb.log"
+
+    # Si se cortaron (no es un FALLO de una comprobación), dónde: con gdb, solo las rápidas.
+    if command -v gdb > /dev/null; then
+        run_tests gdb -batch -ex run -ex bt --args "$tests" --output "$out/test-output" 2>&1 | tail -n 60 || true
+    fi
+
+    exit 1
+fi
 
 #------------------------------------------------------------------------------
 step '4/4 Crear el paquete'
