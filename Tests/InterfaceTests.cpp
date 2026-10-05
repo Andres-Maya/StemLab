@@ -261,7 +261,9 @@ namespace
                     const auto spot = tour->getSpotlightBounds();
                     inside = inside && window.getLocalBounds().contains (card);
                     lit = lit && ! spot.isEmpty() && window.getLocalBounds().contains (spot);
-                    apart = apart && ! card.intersects (spot);
+                    // Fuera de la zona iluminada; si esta ocupa casi toda la ventana
+                    // (las pistas) y no cabe fuera, entera dentro.
+                    apart = apart && (! card.intersects (spot) || spot.contains (card));
 
                     if (step == 2 || step == 6 || step == 9)
                         saveSnapshot (window.createComponentSnapshot (window.getLocalBounds()), "tutorial-" + juce::String (step + 1) + ".png");
@@ -269,7 +271,7 @@ namespace
 
                 CHECK (tour->getStepIndex() == tour->getNumSteps() - 1, "Siguiente recorre todos los pasos");
                 CHECK (lit, "cada paso ilumina una zona de la ventana");
-                CHECK (inside && apart, "y su tarjeta queda dentro de la ventana, sin tapar la zona iluminada");
+                CHECK (inside && apart, "y su tarjeta queda dentro de la ventana, sin tapar el borde de la zona iluminada");
 
                 tour->back();
                 CHECK (tour->getStepIndex() == tour->getNumSteps() - 2, "Atrás vuelve al paso anterior");
