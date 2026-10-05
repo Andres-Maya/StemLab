@@ -18,18 +18,22 @@ namespace Palette
         currentTheme = theme;
         const auto light = theme == Theme::light;
 
-        background = juce::Colour (light ? 0xfff2f4f7 : 0xff121419);
-        panel      = juce::Colour (light ? 0xffffffff : 0xff1b1e25);
-        panelLight = juce::Colour (light ? 0xffe3e7ee : 0xff252932);
-        outline    = juce::Colour (light ? 0xffc8ced9 : 0xff343945);
+        // El claro, sin blancos puros y con los colores más oscuros que en el
+        // tema oscuro: sobre un fondo claro, los tonos vivos distraen.
+        background = juce::Colour (light ? 0xffe8ebf0 : 0xff121419);
+        panel      = juce::Colour (light ? 0xfff4f5f8 : 0xff1b1e25);
+        panelLight = juce::Colour (light ? 0xffdbe0e8 : 0xff252932);
+        outline    = juce::Colour (light ? 0xffb9c1ce : 0xff343945);
         text       = juce::Colour (light ? 0xff1b1f27 : 0xffe4e6eb);
-        textDim    = juce::Colour (light ? 0xff5b6472 : 0xff8b919c);
-        accent     = juce::Colour (light ? 0xff0b84c9 : 0xff4fc3f7);
+        textDim    = juce::Colour (light ? 0xff566070 : 0xff8b919c);
+        accent     = juce::Colour (light ? 0xff0a6aa6 : 0xff4fc3f7);
+        mute       = juce::Colour (light ? 0xffc48a0a : 0xfff0b429);
+        solo       = juce::Colour (light ? 0xff3a9d5b : 0xff5ccb7a);
     }
 
     juce::Colour onBackground (juce::Colour colour)
     {
-        return currentTheme == Theme::light && ! colour.isTransparent() ? colour.darker (0.32f) : colour;
+        return currentTheme == Theme::light && ! colour.isTransparent() ? colour.darker (0.75f) : colour;
     }
 }
 

@@ -20,9 +20,10 @@ namespace Palette
     inline juce::Colour textDim    { 0xff8b919c };
     inline juce::Colour accent     { 0xff4fc3f7 };
 
+    inline juce::Colour mute       { 0xfff0b429 };
+    inline juce::Colour solo       { 0xff5ccb7a };
+
     // Iguales en los dos temas.
-    inline const juce::Colour mute       { 0xfff0b429 };
-    inline const juce::Colour solo       { 0xff5ccb7a };
     inline const juce::Colour record     { 0xffe5484d };
     inline const juce::Colour onText     { 0xff121419 };     // texto sobre un botón activado (M, S, Ondas)
 
