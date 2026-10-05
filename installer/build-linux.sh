@@ -18,7 +18,7 @@
 #   4. Crear el .tar.gz.
 #
 # Necesita (Ubuntu / Debian):
-#   sudo apt install build-essential cmake pkg-config git curl xvfb \
+#   sudo apt install build-essential cmake pkg-config git curl xvfb openbox \
 #       libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
 #       libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
 #       libxrandr-dev libxrender-dev libxi-dev libglu1-mesa-dev mesa-common-dev
@@ -94,10 +94,13 @@ cp "$root/python/stemlab_separate.py" "$root/python/stemlab_encode_mp3.py" "$sta
 #------------------------------------------------------------------------------
 step '3/4 Pruebas (rápidas + MP3 y separación con el Python del paquete)'
 
-# Las pruebas crean ventanas: sin pantalla (GitHub Actions) se usa una virtual.
+# Las pruebas crean ventanas: sin pantalla (GitHub Actions) se usa una virtual,
+# con un gestor de ventanas (openbox). Sin él, la primera ventana de verdad (un
+# aviso) falla con "BadAtom": JUCE usa propiedades que solo existen con uno.
 runner=()
 if [ -z "${DISPLAY:-}" ]; then
-    runner=(xvfb-run --auto-servernum --server-args='-screen 0 1600x1000x24' --error-file="$out/xvfb.log")
+    runner=(xvfb-run --auto-servernum --server-args='-screen 0 1600x1000x24' --error-file="$out/xvfb.log"
+            bash -c 'if command -v openbox > /dev/null; then openbox & sleep 2; fi; exec "$@"' --)
 fi
 
 # stdbuf: cada línea sale al momento (si las pruebas se cortan, se ve dónde).
