@@ -301,6 +301,26 @@ namespace
         Palette::setTheme (Theme::light);
         lookAndFeel.applyTheme();
 
+        // La ventana de ondas de la separación también sigue al tema.
+        {
+            std::vector<SeparationView::Stem> stems;
+
+            for (const auto* id : { "vocals", "drums", "bass", "other" })
+                stems.push_back ({ stemDisplayName (id), trackColourFor (stemDisplayName (id), 0) });
+
+            SeparationView view ("My song", trackColourFor ("My song", 0), stems);
+            view.getProgress = [] { return 0.9; };
+            view.getStatus = [] { return juce::String ("Separating instruments (cpu)..."); };
+
+            for (int frame = 0; frame < 120; ++frame)
+                view.advance (1.0 / 60.0);
+
+            const auto image = view.createComponentSnapshot (view.getLocalBounds());
+            saveSnapshot (image, "separacion-clara.png");
+            CHECK (view.getNumVisibleStems() == 4 && image.getPixelAt (4, image.getHeight() / 2).getBrightness() > 0.85f,
+                   "con el tema claro, la ventana de ondas tiene el fondo claro");
+        }
+
         {
             MainComponent window (engine, projects, ai);
             window.setVisible (true);

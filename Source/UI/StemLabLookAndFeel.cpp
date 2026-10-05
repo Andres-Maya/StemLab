@@ -29,11 +29,17 @@ namespace Palette
         accent     = juce::Colour (light ? 0xff0a6aa6 : 0xff4fc3f7);
         mute       = juce::Colour (light ? 0xffc48a0a : 0xfff0b429);
         solo       = juce::Colour (light ? 0xff3a9d5b : 0xff5ccb7a);
+        highlight  = juce::Colour (light ? 0xff1b1f27 : 0xffffffff);
     }
 
     juce::Colour onBackground (juce::Colour colour)
     {
         return currentTheme == Theme::light && ! colour.isTransparent() ? colour.darker (0.75f) : colour;
+    }
+
+    juce::Colour emphasised (juce::Colour colour, float amount)
+    {
+        return currentTheme == Theme::light ? colour.darker (amount * 0.6f) : colour.brighter (amount);
     }
 }
 

@@ -20,6 +20,7 @@ namespace Palette
     inline juce::Colour textDim    { 0xff8b919c };
     inline juce::Colour accent     { 0xff4fc3f7 };
 
+    inline juce::Colour highlight  { 0xffffffff };     // lo más brillante de la ventana de ondas: blanco / casi negro
     inline juce::Colour mute       { 0xfff0b429 };
     inline juce::Colour solo       { 0xff5ccb7a };
 
@@ -34,9 +35,14 @@ namespace Palette
         tonos pastel del tema oscuro apenas se ven sobre un fondo claro, así
         que se oscurecen. */
     juce::Colour onBackground (juce::Colour colour);
+
+    /** Un tono que destaca sobre el propio color (los brillos de la ventana
+        de ondas): más claro en el tema oscuro y más oscuro en el claro, donde
+        un tono más claro se perdería contra el fondo. */
+    juce::Colour emphasised (juce::Colour colour, float amount);
 }
 
-/** El tema oscuro, siempre: la ventana de ondas de la separación no cambia. */
+/** Los colores del tema oscuro, fijos (referencia para las pruebas). */
 namespace DarkPalette
 {
     inline const juce::Colour background { 0xff121419 };

@@ -28,7 +28,7 @@ namespace
     /** Esfera con luz arriba a la izquierda. */
     void fillSphere (juce::Graphics& g, juce::Point<float> centre, float radius, juce::Colour colour, float alpha)
     {
-        juce::ColourGradient shade (colour.brighter (0.9f).withMultipliedAlpha (alpha),
+        juce::ColourGradient shade (Palette::emphasised (colour, 0.9f).withMultipliedAlpha (alpha),
                                     centre.translated (-radius * 0.35f, -radius * 0.4f),
                                     colour.darker (1.1f).withMultipliedAlpha (alpha),
                                     centre.translated (radius * 0.9f, radius * 0.9f), true);
@@ -48,7 +48,7 @@ namespace
 //==============================================================================
 SeparationView::SeparationView (juce::String source, juce::Colour colour, std::vector<Stem> stemList)
     : sourceName (std::move (source)),
-      sourceColour (colour),
+      sourceColour (Palette::onBackground (colour)),     // la ventana se crea con el tema actual
       stems (std::move (stemList)),
       appearedAt (stems.size(), -1.0),
       present (stems.size(), true),
@@ -56,11 +56,7 @@ SeparationView::SeparationView (juce::String source, juce::Colour colour, std::v
 {
     setOpaque (true);
 
-    // Esta ventana es siempre oscura (DarkPalette), también con el tema claro.
     cancelButton.setButtonText (tr ("Cancelar separación"));
-    cancelButton.setColour (juce::TextButton::buttonColourId, DarkPalette::panelLight);
-    cancelButton.setColour (juce::TextButton::textColourOffId, DarkPalette::text);
-    cancelButton.setColour (juce::ComboBox::outlineColourId, DarkPalette::outline);
     cancelButton.onClick = [this] { if (onCancel != nullptr) onCancel(); };
     addAndMakeVisible (cancelButton);
 
@@ -259,18 +255,18 @@ void SeparationView::resized()
 //==============================================================================
 void SeparationView::paint (juce::Graphics& g)
 {
-    g.fillAll (DarkPalette::background);
+    g.fillAll (Palette::background);
 
     auto bounds = getLocalBounds().toFloat();
     auto header = bounds.removeFromTop ((float) headerHeight).reduced (20.0f, 10.0f);
     bounds.removeFromBottom ((float) footerHeight);
 
     // Título y estado.
-    g.setColour (DarkPalette::text);
+    g.setColour (Palette::text);
     g.setFont (juce::FontOptions (19.0f, juce::Font::bold));
     g.drawText (finished && succeeded ? tr ("Pistas de \"{0}\"", sourceName) : tr ("Separando \"{0}\"", sourceName),
                 header.removeFromTop (26.0f), juce::Justification::centred, true);
-    g.setColour (DarkPalette::textDim);
+    g.setColour (Palette::textDim);
     g.setFont (juce::FontOptions (13.5f));
     g.drawText (status, header, juce::Justification::centred, true);
 
@@ -306,7 +302,7 @@ void SeparationView::paint (juce::Graphics& g)
         // Del anillo al borde de la onda: no cruza el porcentaje.
         if (appear > 0.0f && distance > mainRadius * 1.32f + stemRadius)
             drawBeam (g, centre + offset * (mainRadius * 1.32f / distance),
-                      position - offset * (stemRadius * 0.95f / distance), stems[(size_t) i].colour, appear, i);
+                      position - offset * (stemRadius * 0.95f / distance), Palette::onBackground (stems[(size_t) i].colour), appear, i);
     }
 
     drawCentre (g, centre, mainRadius);
@@ -349,7 +345,7 @@ void SeparationView::drawCentre (juce::Graphics& g, juce::Point<float> centre, f
         g.drawText (text, area.translated (0.0f, offset), juce::Justification::centred, false);
     }
 
-    g.setColour (juce::Colours::white);
+    g.setColour (Palette::highlight);
     g.drawText (text, area, juce::Justification::centred, false);
 }
 
@@ -381,13 +377,13 @@ void SeparationView::drawFrequencyRing (juce::Graphics& g, juce::Point<float> ce
     // Resplandor del color de la pista y, encima, la línea blanca fina.
     g.setColour (sourceColour.withAlpha (0.16f));
     g.strokePath (ring, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (sourceColour.brighter (0.5f).withAlpha (0.45f));
+    g.setColour (Palette::emphasised (sourceColour, 0.5f).withAlpha (0.45f));
     g.strokePath (ring, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (juce::Colours::white.withAlpha (0.95f));
+    g.setColour (Palette::highlight.withAlpha (0.95f));
     g.strokePath (ring, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // Puntos brillantes en los picos: máximos locales altos; el mayor, más grande.
-    const auto dotColour = sourceColour.brighter (0.9f);
+    const auto dotColour = Palette::emphasised (sourceColour, 0.9f);
     int highest = -1;
 
     for (int k = 0; k < ringPoints; ++k)
@@ -412,7 +408,7 @@ void SeparationView::drawFrequencyRing (juce::Graphics& g, juce::Point<float> ce
     {
         const auto& peak = points[(size_t) highest];
         fillGlow (g, peak, 18.0f, dotColour, 0.75f);
-        g.setColour (juce::Colours::white);
+        g.setColour (Palette::highlight);
         g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (peak));
     }
 }
@@ -439,7 +435,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
     if (radius <= 0.5f)
         return;
 
-    const auto colour = stems[(size_t) index].colour;
+    const auto colour = Palette::onBackground (stems[(size_t) index].colour);
     const auto t = (float) time + (float) index * 0.7f;
     const auto circle = [&centre] (float r) { return juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (centre); };
 
@@ -464,7 +460,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             {
                 const auto angle = t * 2.1f + twoPi * (float) j / 5.0f;
                 const auto size = radius * (0.14f + 0.06f * std::sin (t * 3.0f + (float) j));
-                g.setColour (colour.brighter (0.5f).withAlpha (alpha));
+                g.setColour (Palette::emphasised (colour, 0.5f).withAlpha (alpha));
                 g.fillEllipse (juce::Rectangle<float> (size * 2.0f, size * 2.0f)
                                    .withCentre (centre.translated (radius * 0.95f * std::cos (angle), radius * 0.95f * std::sin (angle))));
             }
@@ -475,7 +471,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             juce::Path arcs;
             arcs.addCentredArc (centre.x, centre.y, radius * 0.78f, radius * 0.78f, t * 2.4f, 0.0f, 3.8f, true);
             arcs.addCentredArc (centre.x, centre.y, radius * 0.98f, radius * 0.98f, -t * 1.7f, 0.0f, 3.2f, true);
-            g.setColour (colour.brighter (0.3f).withAlpha (alpha));
+            g.setColour (Palette::emphasised (colour, 0.3f).withAlpha (alpha));
             g.strokePath (arcs, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             break;
         }
@@ -499,7 +495,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             blob.closeSubPath();
             g.setColour (colour.withAlpha (0.3f * alpha));
             g.fillPath (blob);
-            g.setColour (colour.brighter (0.4f).withAlpha (alpha));
+            g.setColour (Palette::emphasised (colour, 0.4f).withAlpha (alpha));
             g.strokePath (blob, juce::PathStrokeType (1.8f));
             break;
         }
@@ -510,7 +506,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
                 const auto theta = twoPi * (float) k / 28.0f + t * 0.6f;
                 const auto level = 0.2f + 0.8f * std::abs (std::sin (t * 4.0f + (float) k * 0.9f));
                 const juce::Point<float> direction (std::cos (theta), std::sin (theta));
-                g.setColour (colour.brighter (0.3f).withAlpha (alpha * (0.4f + 0.6f * level)));
+                g.setColour (Palette::emphasised (colour, 0.3f).withAlpha (alpha * (0.4f + 0.6f * level)));
                 g.drawLine (juce::Line<float> (centre + direction * radius * 0.66f,
                                                centre + direction * radius * (0.66f + 0.42f * level)), 2.0f);
             }
@@ -535,7 +531,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
             petals.closeSubPath();
             g.setColour (colour.withAlpha (0.35f * alpha));
             g.fillPath (petals);
-            g.setColour (colour.brighter (0.4f).withAlpha (alpha));
+            g.setColour (Palette::emphasised (colour, 0.4f).withAlpha (alpha));
             g.strokePath (petals, juce::PathStrokeType (1.5f));
             break;
         }
@@ -545,7 +541,7 @@ void SeparationView::drawStemOrb (juce::Graphics& g, int index, juce::Point<floa
 //==============================================================================
 SeparationWindow::SeparationWindow (const juce::String& sourceName, juce::Colour sourceColour,
                                     std::vector<SeparationView::Stem> stems)
-    : juce::DocumentWindow (tr ("Separando instrumentos"), DarkPalette::background, juce::DocumentWindow::closeButton)
+    : juce::DocumentWindow (tr ("Separando instrumentos"), Palette::background, juce::DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);
     view = new SeparationView (sourceName, sourceColour, std::move (stems));
